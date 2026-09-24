@@ -56,6 +56,10 @@ def test_jones_pupil_init(cooke_triplet, set_test_backend):
 
             mock_rays.p = torch.zeros((1, 3, 3), dtype=torch.float64)
             mock_rays.x = torch.zeros(1, dtype=torch.float64)
+        mock_rays.get_input_basis.return_value = (
+            be.array([[1.0, 0.0, 0.0]]),
+            be.array([[0.0, 1.0, 0.0]]),
+        )
 
         mock_trace.return_value = mock_rays
 
@@ -73,6 +77,10 @@ def test_jones_pupil_generate_data(cooke_triplet, set_test_backend):
 
             mock_rays.p = torch.zeros((1, 3, 3), dtype=torch.float64)
             mock_rays.x = torch.zeros(1, dtype=torch.float64)
+        mock_rays.get_input_basis.return_value = (
+            be.array([[1.0, 0.0, 0.0]]),
+            be.array([[0.0, 1.0, 0.0]]),
+        )
         mock_trace.return_value = mock_rays
 
         jp = jones_pupil.JonesPupil(cooke_triplet)
