@@ -19,6 +19,7 @@ from optiland.jones import (
 )
 from optiland.materials import BaseMaterial
 from optiland.thin_film import ThinFilmStack
+from optiland.thin_film.core import _complex_index
 
 if TYPE_CHECKING:
     from optiland.rays import RealRays
@@ -303,7 +304,8 @@ class BaseCoatingPolarized(BaseCoating, ABC):
         """
         aoi = self._compute_aoi(rays, nx, ny, nz)
         jones = self.jones.calculate_matrix(rays, reflect=True, aoi=aoi)
-        rays.update(jones)
+        flux = self.jones.calculate_flux_factor(rays, reflect=True, aoi=aoi)
+        rays.update(jones, flux_factor=flux)
         return rays
 
     def transmit(
@@ -327,7 +329,8 @@ class BaseCoatingPolarized(BaseCoating, ABC):
         """
         aoi = self._compute_aoi(rays, nx, ny, nz)
         jones = self.jones.calculate_matrix(rays, reflect=False, aoi=aoi)
-        rays.update(jones)
+        flux = self.jones.calculate_flux_factor(rays, reflect=False, aoi=aoi)
+        rays.update(jones, flux_factor=flux)
         return rays
 
     def to_dict(self) -> dict[str, Any]:  # pragma: no cover
@@ -372,12 +375,18 @@ class FresnelCoating(BaseCoatingPolarized):
         material_post (str): The material after the coating.
         jones (JonesFresnel): The JonesFresnel object, which calculates the
             Jones matrices for given ray properties.
+        follows_surface (bool): True if the surface made the coating from its
+            own materials (``Surface.set_fresnel_coating`` or
+            ``coating="fresnel"``). A surface rebuilds such a coating when its
+            materials change. False for a coating that the user gave; on a
+            mirror surface it keeps its exit material (the mirror substrate).
 
     """
 
     def __init__(self, material_pre: BaseMaterial, material_post: BaseMaterial):
         self.material_pre = material_pre
         self.material_post = material_post
+        self.follows_surface = False
 
         self._jones = JonesFresnel(material_pre, material_post)
 
@@ -491,11 +500,14 @@ class JonesThinFilm(BaseJones):
     Builds diagonal Jones matrices in the s/p basis using thin-film r/t
     amplitude coefficients. Reflect or transmit selection mirrors JonesFresnel.
 
+    The time dependence is exp(-iωt). The thin-film r_p has the Macleod sign
+    (r_p = -r_pp of the Fresnel equations), thus the p entry of a reflection
+    is -r_p. The thin-film t_p is the ratio of the tangential fields; the p
+    entry of a transmission is the ratio of the full fields,
+    t_p cos θ_0 / cos θ_sub. The k entry is 1 for reflection and transmission.
+
     Args:
         stack: ThinFilmStack configured with incident/substrate and layers.
-        wavelength_nm: Optional wavelength override (nm); if None uses rays.w (µm)
-        converted.
-        aoi_override_rad: Optional AOI override (radians); if None uses computed AOI.
     """
 
     def __init__(self, stack: ThinFilmStack):
@@ -521,14 +533,45 @@ class JonesThinFilm(BaseJones):
         if reflect:
             col0 = be.stack([r_s, z, z], axis=-1)
             col1 = be.stack([z, -r_p, z], axis=-1)
-            col2 = be.stack([z, z, -o], axis=-1)
         else:
+            cos0, cos_sub = self._cosines(wl_um, th)
             col0 = be.stack([t_s, z, z], axis=-1)
-            col1 = be.stack([z, t_p, z], axis=-1)
-            col2 = be.stack([z, z, o], axis=-1)
+            col1 = be.stack([z, t_p * cos0 / cos_sub, z], axis=-1)
+        col2 = be.stack([z, z, o], axis=-1)
 
         jones = be.stack([col0, col1, col2], axis=-2)
         return jones
+
+    def calculate_flux_factor(
+        self,
+        rays: RealRays,
+        reflect: bool = False,
+        aoi: be.ndarray = None,
+    ) -> be.ndarray:
+        """Calculate the power factor Re(n_sub cos θ_sub) / Re(n_0 cos θ_0).
+
+        The factor is 1 for a reflection. See
+        :meth:`optiland.jones.JonesFresnel.calculate_flux_factor`.
+        """
+        if reflect:
+            return be.ones_like(rays.x)
+        wl_um = be.atleast_1d(rays.w)
+        th = be.atleast_1d(aoi if aoi is not None else be.zeros_like(rays.w))
+        n0 = _complex_index(self.stack.incident_material, wl_um)
+        n_sub = _complex_index(self.stack.substrate_material, wl_um)
+        cos0, cos_sub = self._cosines(wl_um, th)
+        return be.real(n_sub * cos_sub) / be.real(n0 * cos0)
+
+    def _cosines(
+        self, wl_um: be.ndarray, th_rad: be.ndarray
+    ) -> tuple[be.ndarray, be.ndarray]:
+        """Return cos θ_0 and cos θ_sub for exp(-iωt) (Im(n cos θ) >= 0)."""
+        n0 = _complex_index(self.stack.incident_material, wl_um)
+        n_sub = _complex_index(self.stack.substrate_material, wl_um)
+        tangential = (n0 * be.to_complex(be.sin(th_rad))) ** 2
+        cos0 = be.sqrt(n0**2 - tangential) / n0
+        cos_sub = be.sqrt(n_sub**2 - tangential) / n_sub
+        return cos0, cos_sub
 
     def _coeffs_amp(
         self, wl_um: be.ndarray, th_rad: be.ndarray, pol: str, reflect: bool

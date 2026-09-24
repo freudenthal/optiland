@@ -78,6 +78,12 @@ def _admittance(n: complex, cos_t: complex, pol: PolSP):
         raise ValueError("Invalid polarization state")
 
 
+def _conj(z: Array) -> Array:
+    """Complex conjugate as a new array (torch.conj only sets a lazy flag,
+    which blocks a later conversion to numpy)."""
+    return be.real(z) - 1j * be.imag(z)
+
+
 def _tmm_coh(stack: ThinFilmStack, wavelength_um, theta0_rad, pol: PolSP):
     """Compute the reflection and transmission coefficients for a thin film stack.
 
@@ -98,6 +104,11 @@ def _tmm_coh(stack: ThinFilmStack, wavelength_um, theta0_rad, pol: PolSP):
         wavelength_um (float | Array): Wavelength(s) in microns.
         theta0_rad (float | Array): Angle(s) of incidence in radians.
         pol (PolSP): Polarization state ('s' or 'p').
+
+    Conventions: the time dependence of r and t is exp(-iωt) and the complex
+    index is n + ik. For p polarization, r and t follow Macleod: r_p has the
+    opposite sign of the Fresnel r_pp of Born and Wolf, and t_p is the ratio
+    of the tangential electric fields (t_pp cos θ_sub / cos θ_0).
 
     Returns:
         tuple[Array, Array, Array, Array, Array]: (r, t, R, T, A) where:
@@ -137,8 +148,10 @@ def _tmm_coh(stack: ThinFilmStack, wavelength_um, theta0_rad, pol: PolSP):
     denom = eta0 * (A + etas * B) + C + etas * D
     denom = be.where(be.abs(denom) == 0, 1e-30 + 0j, denom)
 
-    r = (eta0 * A + eta0 * etas * B - C - etas * D) / denom
-    t = be.conj((2 * eta0) / denom)
+    # The Macleod forms above are for exp(+iωt) with n - ik. Conjugate r and t
+    # to give both in exp(-iωt), the time convention of Optiland.
+    r = _conj((eta0 * A + eta0 * etas * B - C - etas * D) / denom)
+    t = _conj((2 * eta0) / denom)
 
     R = (r * be.conj(r)).real
     T = (t * be.conj(t)).real * etas.real / eta0.real

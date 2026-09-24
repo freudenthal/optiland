@@ -52,9 +52,51 @@ class BaseJones(ABC):
         """
         return be.tile(be.eye(3), (be.size(rays.x), 1, 1))  # pragma: no cover
 
+    def calculate_flux_factor(
+        self,
+        rays: RealRays,
+        reflect: bool = False,
+        aoi: be.ndarray = None,
+    ) -> be.ndarray:
+        """Calculate the power factor that the Jones matrix does not contain.
+
+        The Jones matrix maps field amplitudes. The transmitted power of a ray
+        is ``|J E|**2`` times this factor. The default is 1 (no change of
+        medium).
+
+        Args:
+            rays (RealRays): Object representing the rays.
+            reflect (bool, optional): Indicates whether the rays are reflected
+                or not. Defaults to False.
+            aoi (be.ndarray, optional): Array representing the angle of
+                incidence. Defaults to None.
+
+        Returns:
+            be.ndarray: The power factor per ray, shape (N,).
+
+        """
+        return be.ones_like(rays.x)
+
+
+def _complex_index(material, wavelength: be.ndarray) -> be.ndarray:
+    """Return the complex refractive index n + ik of a material."""
+    n = be.to_complex(be.atleast_1d(material.n(wavelength)))
+    k = be.to_complex(be.atleast_1d(material.k(wavelength)))
+    return n + 1j * k
+
 
 class JonesFresnel(BaseJones):
     """Class representing the Jones matrix for Fresnel calculations.
+
+    The time dependence is exp(-iωt) and the complex index is n + ik (k >= 0
+    for loss). The Jones matrix is in the local (s, p, k) frame of
+    :meth:`PolarizedRays.get_local_basis`, where ``p = k x s`` on each side of
+    the surface. In this frame the p entry of a reflection is
+    ``(N**2 cos θ - N cos θ_t) / (N**2 cos θ + N cos θ_t)`` with the relative
+    index ``N`` (+0.2 at normal incidence from air to n = 1.5, the same value
+    as the s entry). The k entry is 1, so that the global PRT matrix maps the
+    incident direction to the exit direction (Yun, Crabtree and Chipman,
+    Appl. Opt. 50, 2855 (2011)).
 
     Args:
         material_pre (Material): Material object representing the
@@ -87,34 +129,63 @@ class JonesFresnel(BaseJones):
             be.ndarray: The calculated Jones matrix.
 
         """
-        # define local variables
-        n1 = self.material_pre.n(rays.w)
-        n2 = self.material_post.n(rays.w)
-
-        # precomputations for speed
+        n1, root, n = self._indices(rays, aoi)
         cos_theta_i = be.cos(aoi)
-        n = n2 / n1
-        radicand = be.to_complex(n**2 - be.sin(aoi) ** 2)
-        root = be.sqrt(radicand)
 
         # compute fresnel coefficients & compute jones matrices
         jones_matrix = be.to_complex(be.zeros((be.size(rays.x), 3, 3)))
         if reflect:
             s = (cos_theta_i - root) / (cos_theta_i + root)
             p = (n**2 * cos_theta_i - root) / (n**2 * cos_theta_i + root)
-
-            jones_matrix[:, 0, 0] = s
-            jones_matrix[:, 1, 1] = -p
-            jones_matrix[:, 2, 2] = -1
         else:
             s = 2 * cos_theta_i / (cos_theta_i + root)
             p = 2 * n * cos_theta_i / (n**2 * cos_theta_i + root)
 
-            jones_matrix[:, 0, 0] = s
-            jones_matrix[:, 1, 1] = p
-            jones_matrix[:, 2, 2] = 1
+        jones_matrix[:, 0, 0] = s
+        jones_matrix[:, 1, 1] = p
+        jones_matrix[:, 2, 2] = 1
 
         return jones_matrix
+
+    def calculate_flux_factor(
+        self,
+        rays: RealRays,
+        reflect: bool = False,
+        aoi: be.ndarray = None,
+    ) -> be.ndarray:
+        """Calculate the power factor Re(n' cos θ') / Re(n cos θ) of a refraction.
+
+        The transmittance of a refraction is ``|t|**2`` times this factor. The
+        factor is 1 for a reflection. For an absorbing medium the factor is the
+        s-polarization form; the p form differs by O(k**2).
+
+        Args:
+            rays (RealRays): Object representing the rays.
+            reflect (bool, optional): Indicates whether the rays are reflected
+                or not. Defaults to False.
+            aoi (be.ndarray, optional): Array representing the angle of
+                incidence. Defaults to None.
+
+        Returns:
+            be.ndarray: The power factor per ray, shape (N,).
+
+        """
+        if reflect:
+            return be.ones_like(rays.x)
+        n1, root, _ = self._indices(rays, aoi)
+        return be.real(n1 * root) / be.real(n1 * be.cos(aoi))
+
+    def _indices(self, rays: RealRays, aoi: be.ndarray):
+        """Return n1, N cos θ_t and the relative index N = n2 / n1.
+
+        N cos θ_t is the principal square root of N**2 - sin**2 θ, which has
+        Im >= 0 for a lossy exit medium (a decaying wave for exp(-iωt)).
+        """
+        n1 = _complex_index(self.material_pre, rays.w)
+        n2 = _complex_index(self.material_post, rays.w)
+        n = n2 / n1
+        root = be.sqrt(n**2 - be.to_complex(be.sin(aoi) ** 2))
+        return n1, root, n
 
 
 class JonesLinearPolarizer(BaseJones):
