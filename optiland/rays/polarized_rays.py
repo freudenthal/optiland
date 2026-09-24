@@ -30,6 +30,10 @@ class PolarizedRays(RealRays):
         w (ndarray): The wavelength of the rays.
         opd (ndarray): The optical path length of the rays.
         p (be.ndarray): Array of polarization matrices of the rays.
+        q (be.ndarray): Array of the geometrical transformations of the rays:
+            the PRT matrices of the same paths without polarization effects
+            (the parallel transport of the local frames; Yun, McClain and
+            Chipman, Appl. Opt. 50, 2866 (2011)). Used for the retardance.
         flux_factor (be.ndarray): Product of the power factors
             Re(n' cos θ') / Re(n cos θ) of the refractions on the path. The
             PRT matrix maps field amplitudes; the ray power is |P E|**2 times
@@ -52,6 +56,7 @@ class PolarizedRays(RealRays):
         super().__init__(x, y, z, L, M, N, intensity, wavelength)
 
         self.p = be.tile(be.eye(3), (be.size(self.x), 1, 1))
+        self.q = be.tile(be.eye(3), (be.size(self.x), 1, 1))
         self.flux_factor = be.ones_like(self.x)
         self._i0 = be.copy(intensity)
         self._L0 = be.copy(L)
@@ -207,13 +212,15 @@ class PolarizedRays(RealRays):
         s, p0, p1, o_in, o_out = self.get_local_basis(k0, k1)
 
         # compute polarization matrix for surface
+        q = be.matmul(o_out, o_in)
         if jones_matrix is None:
-            p = be.matmul(o_out, o_in)
+            p = q
         else:
             p = be.batched_chain_matmul3(o_out, jones_matrix, o_in)
 
         # update polarization matrices of rays
         self.p = be.matmul(p, self.p)
+        self.q = be.matmul(q, self.q)
         if flux_factor is not None:
             self.flux_factor = self.flux_factor * flux_factor
 

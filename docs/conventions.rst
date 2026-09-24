@@ -195,6 +195,18 @@ Polarized ray tracing (``lens.updater.set_polarization(...)``) uses these conven
 - **Mirror coatings** — on a mirror surface a user :class:`~optiland.coatings.FresnelCoating` or
   :class:`~optiland.coatings.ThinFilmCoating` keeps its exit material (the mirror substrate):
   ``coating=FresnelCoating(air, mirror_material)``.
+- **Stokes vectors** — :mod:`optiland.analysis.mueller` gives the Stokes vector of a Jones vector
+  ``(Ex, Ey)`` in a right-handed frame ``(x, y, k)`` as ``S0 = |Ex|² + |Ey|²``,
+  ``S1 = |Ex|² - |Ey|²``, ``S2 = 2 Re(Ex Ey*)``, ``S3 = 2 Im(Ex Ey*) = Im((E x E*) · k)``.
+  ``S3 > 0`` is right circular polarization for an observer who looks toward the source: the
+  ``"RCP"`` state of :func:`~optiland.rays.create_polarization` has ``S3 = +1``.
+- **Mueller matrices** — ``mueller_matrix(rays, x_ref)`` maps the input Stokes vector (in the input
+  frame ``(s, p)`` of each ray) to the Stokes vector in a detector frame: ``x`` is ``x_ref``
+  projected onto the plane normal to ``k_out``, ``y = k_out x x``. It includes
+  ``rays.flux_factor``, so ``M[0, 0]`` is the transmittance for unpolarized light.
+  ``rays.q`` is the PRT matrix of the same path without polarization effects (the parallel
+  transport of the local frames); :func:`~optiland.analysis.mueller.retardance` removes it
+  (Yun, McClain and Chipman, Appl. Opt. 50, 2866 (2011)).
 
 ----
 
