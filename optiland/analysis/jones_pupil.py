@@ -30,6 +30,10 @@ class JonesPupil(BaseAnalysis):
     (or image plane) as a function of normalized pupil coordinates. It visualizes
     the real and imaginary parts of the Jones matrix elements (Jxx, Jxy, Jyx, Jyy).
 
+    The input basis of each ray is the transverse basis (x_in, y_in) of the
+    input field (``PolarizedRays.get_input_basis``): y_in = k0 x x / |k0 x x|,
+    x_in = y_in x k0. The output basis is v = k x x / |k x x|, u = v x k.
+
     Attributes:
         optic: Instance of the optic object to be assessed.
     Attributes:
@@ -216,12 +220,12 @@ class JonesPupil(BaseAnalysis):
         # Jyx = v . (P . x_in)
         # Jyy = v . (P . y_in)
 
-        # p has shape (N, 3, 3)
-        # P . x_in is simply the first column of p
-        # P . y_in is simply the second column of p
-
-        P_x_in = rays.p[:, :, 0]  # Shape (N, 3)
-        P_y_in = rays.p[:, :, 1]  # Shape (N, 3)
+        # The input basis (x_in, y_in) is the transverse basis of the input
+        # field of the trace, (s, p) of PolarizedRays.get_input_basis. It is
+        # the global (x, y) only for an input ray along z.
+        x_in, y_in = rays.get_input_basis()
+        P_x_in = be.sum(rays.p * x_in[:, None, :], axis=2)  # Shape (N, 3)
+        P_y_in = be.sum(rays.p * y_in[:, None, :], axis=2)  # Shape (N, 3)
 
         # Dot products
         Jxx = be.sum(u * P_x_in, axis=1)

@@ -30,6 +30,14 @@ class PolarizedRays(RealRays):
         w (ndarray): The wavelength of the rays.
         opd (ndarray): The optical path length of the rays.
         p (be.ndarray): Array of polarization matrices of the rays.
+        q (be.ndarray): Array of the geometrical transformations of the rays:
+            the PRT matrices of the same paths without polarization effects
+            (the parallel transport of the local frames; Yun, McClain and
+            Chipman, Appl. Opt. 50, 2866 (2011)). Used for the retardance.
+        flux_factor (be.ndarray): Product of the power factors
+            Re(n' cos θ') / Re(n cos θ) of the refractions on the path. The
+            PRT matrix maps field amplitudes; the ray power is |P E|**2 times
+            this factor.
 
     Methods:
         get_output_field(E: be.ndarray) -> be.ndarray:
@@ -48,6 +56,8 @@ class PolarizedRays(RealRays):
         super().__init__(x, y, z, L, M, N, intensity, wavelength)
 
         self.p = be.tile(be.eye(3), (be.size(self.x), 1, 1))
+        self.q = be.tile(be.eye(3), (be.size(self.x), 1, 1))
+        self.flux_factor = be.ones_like(self.x)
         self._i0 = be.copy(intensity)
         self._L0 = be.copy(L)
         self._M0 = be.copy(M)
@@ -122,6 +132,11 @@ class PolarizedRays(RealRays):
     def update_intensity(self, state: PolarizationState):
         """Update ray intensity based on polarization state.
 
+        Multiplies the running intensity (which includes bulk absorption and
+        the other scalar losses of the trace) by the polarization transmittance
+        |P E|**2 of the path and by :attr:`flux_factor`. Call it once, at the
+        end of a trace.
+
         Args:
             state (PolarizationState): The polarization state of the ray.
 
@@ -130,7 +145,7 @@ class PolarizedRays(RealRays):
         intensity = be.zeros_like(self.i)
         for E1 in fields:
             intensity = intensity + be.sum(be.abs(E1) ** 2, axis=1)
-        self.i = intensity * self._i0 / len(fields)
+        self.i = self.i * self.flux_factor * intensity / len(fields)
 
     @staticmethod
     def get_local_basis(
@@ -177,13 +192,17 @@ class PolarizedRays(RealRays):
 
         return s, p0, p1, o_in, o_out
 
-    def update(self, jones_matrix: be.ndarray = None):
+    def update(self, jones_matrix: be.ndarray = None, flux_factor: be.ndarray = None):
         """Update polarization matrices after interaction with surface.
 
         Args:
             jones_matrix (be.ndarray, optional): Jones matrix representing the
                 interaction with the surface. If not provided, the
                 polarization matrix is computed assuming an identity matrix.
+            flux_factor (be.ndarray, optional): Power factor of the surface
+                that the Jones matrix does not contain (see
+                :meth:`optiland.jones.BaseJones.calculate_flux_factor`). If not
+                provided, the factor is 1.
 
         """
         # merge k-vector components into matrix for speed
@@ -193,22 +212,27 @@ class PolarizedRays(RealRays):
         s, p0, p1, o_in, o_out = self.get_local_basis(k0, k1)
 
         # compute polarization matrix for surface
+        q = be.matmul(o_out, o_in)
         if jones_matrix is None:
-            p = be.matmul(o_out, o_in)
+            p = q
         else:
             p = be.batched_chain_matmul3(o_out, jones_matrix, o_in)
 
         # update polarization matrices of rays
         self.p = be.matmul(p, self.p)
+        self.q = be.matmul(q, self.q)
+        if flux_factor is not None:
+            self.flux_factor = self.flux_factor * flux_factor
 
-    def _get_3d_electric_field(self, state: PolarizationState) -> be.ndarray:
-        """Get 3D electric fields given polarization state and initial rays.
+    def get_input_basis(self) -> tuple[be.ndarray, be.ndarray]:
+        """Get the transverse basis of the input field of each ray.
 
-        Args:
-            state (PolarizationState): The polarization state of the rays.
+        The input field is ``Ex s + Ey p`` with ``p = k0 x x / |k0 x x|`` and
+        ``s = p x k0``, where ``k0`` is the initial ray direction. For
+        ``k0 = z``, ``s = x`` and ``p = y``.
 
         Returns:
-            be.ndarray: The 3D electric fields.
+            tuple[be.ndarray, be.ndarray]: (s, p), each of shape (N, 3).
 
         """
         k = be.stack([self._L0, self._M0, self._N0]).T
@@ -224,6 +248,19 @@ class PolarizedRays(RealRays):
         p = p / be.unsqueeze_last(norms)
 
         s = be.cross(p, k)
+        return s, p
+
+    def _get_3d_electric_field(self, state: PolarizationState) -> be.ndarray:
+        """Get 3D electric fields given polarization state and initial rays.
+
+        Args:
+            state (PolarizationState): The polarization state of the rays.
+
+        Returns:
+            be.ndarray: The 3D electric fields.
+
+        """
+        s, p = self.get_input_basis()
 
         E = (
             state.Ex * be.exp(1j * state.phase_x) * s

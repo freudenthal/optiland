@@ -164,6 +164,50 @@ A field describes where on the object (or in what direction) a bundle of rays or
   corresponds to the maximum field defined on the system. Use
   ``lens.fields.get_field_coords()`` to convert your defined fields into this normalized form.
 
+Polarization
+----------------------
+
+Polarized ray tracing (``lens.updater.set_polarization(...)``) uses these conventions:
+
+- **Time dependence** — ``exp(-iωt)``. A complex refractive index is ``n + ik`` with ``k >= 0`` for
+  a lossy medium. :class:`~optiland.jones.JonesFresnel` and the thin-film module
+  (:mod:`optiland.thin_film`) give ``r`` and ``t`` in this convention.
+- **Local frame at a surface** — ``s = k0 x k1 / |k0 x k1|`` (``k0``, ``k1``: ray directions before
+  and after the surface), ``p = k x s`` on each side, so ``(s, p, k)`` is right-handed. A
+  Jones matrix of a surface is given in this frame, in the order ``(s, p)``.
+- **Reflection sign** — in that frame the p entry of a Fresnel reflection is
+  ``r_pp = (N² cos θ - N cos θt) / (N² cos θ + N cos θt)`` with the relative index ``N``. At normal
+  incidence ``r_s = r_pp = (1 - N) / (1 + N)``: the reflected field is ``r E`` for every
+  transverse component, and a circular state changes its handedness. The thin-film module
+  returns ``r_p`` with the Macleod sign (``r_p = -r_pp``) and ``t_p`` as a ratio of the tangential
+  fields; :class:`~optiland.coatings.JonesThinFilm` converts both.
+- **PRT matrix** — ``rays.p`` is the 3 x 3 polarization ray-tracing matrix of the path in global
+  coordinates: ``E_out = P E_in`` for field amplitudes, and ``P k_in = k_out`` for refraction and
+  reflection (Yun, Crabtree and Chipman, Appl. Opt. 50, 2855 (2011)).
+- **Power** — the PRT matrix maps field amplitudes. ``rays.flux_factor`` is the product of the
+  factors ``Re(n' cos θ') / Re(n cos θ)`` of the refractions on the path. The ray intensity after
+  a polarized trace is the running intensity (with bulk absorption) times ``|P E|²`` times
+  ``rays.flux_factor``: the power transmittance.
+- **Input field** — the input field of a ray with direction ``k0`` is ``Ex s + Ey p`` with
+  ``p = k0 x x / |k0 x x|`` and ``s = p x k0`` (``s = x``, ``p = y`` for ``k0 = z``); see
+  ``PolarizedRays.get_input_basis``. :class:`~optiland.analysis.JonesPupil` uses this basis for
+  its input columns.
+- **Mirror coatings** — on a mirror surface a user :class:`~optiland.coatings.FresnelCoating` or
+  :class:`~optiland.coatings.ThinFilmCoating` keeps its exit material (the mirror substrate):
+  ``coating=FresnelCoating(air, mirror_material)``.
+- **Stokes vectors** — :mod:`optiland.analysis.mueller` gives the Stokes vector of a Jones vector
+  ``(Ex, Ey)`` in a right-handed frame ``(x, y, k)`` as ``S0 = |Ex|² + |Ey|²``,
+  ``S1 = |Ex|² - |Ey|²``, ``S2 = 2 Re(Ex Ey*)``, ``S3 = 2 Im(Ex Ey*) = Im((E x E*) · k)``.
+  ``S3 > 0`` is right circular polarization for an observer who looks toward the source: the
+  ``"RCP"`` state of :func:`~optiland.rays.create_polarization` has ``S3 = +1``.
+- **Mueller matrices** — ``mueller_matrix(rays, x_ref)`` maps the input Stokes vector (in the input
+  frame ``(s, p)`` of each ray) to the Stokes vector in a detector frame: ``x`` is ``x_ref``
+  projected onto the plane normal to ``k_out``, ``y = k_out x x``. It includes
+  ``rays.flux_factor``, so ``M[0, 0]`` is the transmittance for unpolarized light.
+  ``rays.q`` is the PRT matrix of the same path without polarization effects (the parallel
+  transport of the local frames); :func:`~optiland.analysis.mueller.retardance` removes it
+  (Yun, McClain and Chipman, Appl. Opt. 50, 2866 (2011)).
+
 ----
 
 Still stuck on a specific error? Run :func:`optiland.diagnostics.check_system` on your ``Optic`` —

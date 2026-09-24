@@ -177,8 +177,9 @@ class TestFresnelCoating:
         rays_after = coating.transmit(rays_parallel_polarized, nx, ny, nz)
         rays_after.update_intensity(state)
 
+        # The intensity is the power transmittance T = 1 - R (|t|^2 times n).
         R = ((1.5 - 1.0) / (1.5 + 1.0)) ** 2
-        assert be.allclose(rays_after.i * 1.5, (1 - R) * i_before)
+        assert be.allclose(rays_after.i, (1 - R) * i_before)
 
     def test_to_dict(self, set_test_backend):
         mat1 = materials.IdealMaterial(n=1.0)

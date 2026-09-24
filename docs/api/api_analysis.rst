@@ -20,6 +20,7 @@ encircled energy, field curvature, distortion, etc.
    analysis.irradiance
    analysis.jones_pupil
    analysis.mtf_vs_field
+   analysis.mueller
    analysis.pupil_aberration
    analysis.ray_fan
    analysis.rms_vs_field
