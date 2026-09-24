@@ -1,7 +1,7 @@
 """Closed-form tests of the polarization conventions of the sequential ray trace.
 
 Each test checks one defect of the issue "Polarization ray tracing: p-reflection
-sign, complex index, power normalization and related defects" (D-1 to D-9)
+sign, complex index, power normalization and related defects" (D-1 to D-9) and D-10
 against a closed form. References: Born and Wolf, Principles of Optics, 7th ed.,
 sections 1.5.2, 1.6.4 and 14.2 (Fresnel and Airy formulas, absorbing media);
 Macleod, Thin-Film Optical Filters, 5th ed., chapter 2 (the thin-film p
@@ -191,6 +191,22 @@ class TestThinFilmTimeConvention:
         expected = r if pol == "s" else -r
         assert_allclose(out["r"][0], expected, rtol=0, atol=1e-12)
         assert_allclose(out["R"][0], abs(r) ** 2, rtol=0, atol=1e-12)
+
+    @pytest.mark.parametrize("reflect", [True, False])
+    def test_jones_keeps_complex_coefficients(self, set_test_backend, reflect):
+        """The JonesThinFilm matrix of an absorbing stack keeps the imaginary
+        parts of r and t on every backend (D-10)."""
+        theta = np.deg2rad(45.0)
+        stack = ThinFilmStack(IdealMaterial(1.0), IdealMaterial(1.5))
+        stack.add_layer_nm(IdealMaterial(0.2, 3.0), 30.0)
+        rays = _ray(45.0)
+        J = JonesThinFilm(stack).calculate_matrix(
+            rays, reflect=reflect, aoi=be.array([theta])
+        )
+        key = "r" if reflect else "t"
+        s = stack.compute_rtRTA_elementwise(be.array([WL]), be.array([theta]), "s")[key]
+        assert_allclose(J[0, 0, 0], s[0], rtol=0, atol=1e-14)
+        assert abs(float(be.to_numpy(be.imag(J[0, 0, 0])))) > 0.1
 
 
 class TestThinFilmFieldAmplitude:

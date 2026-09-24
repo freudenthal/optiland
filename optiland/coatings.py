@@ -527,19 +527,17 @@ class JonesThinFilm(BaseJones):
         r_s, t_s, _, _ = self._coeffs_amp(wl_um, th, pol="s", reflect=reflect)
         r_p, t_p, _, _ = self._coeffs_amp(wl_um, th, pol="p", reflect=reflect)
 
-        z = be.zeros_like(r_s)
-        o = be.ones_like(r_s)
-
+        # Index assignment keeps the complex values on every backend (the
+        # torch backend of be.stack casts to the real precision).
+        jones = be.to_complex(be.zeros((be.size(r_s), 3, 3)))
         if reflect:
-            col0 = be.stack([r_s, z, z], axis=-1)
-            col1 = be.stack([z, -r_p, z], axis=-1)
+            jones[:, 0, 0] = r_s
+            jones[:, 1, 1] = -r_p
         else:
             cos0, cos_sub = self._cosines(wl_um, th)
-            col0 = be.stack([t_s, z, z], axis=-1)
-            col1 = be.stack([z, t_p * cos0 / cos_sub, z], axis=-1)
-        col2 = be.stack([z, z, o], axis=-1)
-
-        jones = be.stack([col0, col1, col2], axis=-2)
+            jones[:, 0, 0] = t_s
+            jones[:, 1, 1] = t_p * cos0 / cos_sub
+        jones[:, 2, 2] = 1
         return jones
 
     def calculate_flux_factor(
