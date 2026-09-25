@@ -9,9 +9,14 @@ Kramer Harrison, 2024
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import optiland.backend as be
 from optiland.rays.polarization_state import PolarizationState
 from optiland.rays.real_rays import RealRays
+
+if TYPE_CHECKING:
+    from optiland._types import ScalarOrArray
 
 
 class PolarizedRays(RealRays):
@@ -81,7 +86,7 @@ class PolarizedRays(RealRays):
             self.q = be.matmul(rotation + 0 * self.q, self.q)
 
     @staticmethod
-    def _rotation(axis: int, angle) -> be.ndarray:
+    def _rotation(axis: int, angle: ScalarOrArray) -> be.ndarray:
         """Return the matrix of a rotation by ``angle`` about a coordinate axis.
 
         The same rotation as ``RealRays.rotate_x/y/z`` applies to (L, M, N).
@@ -97,7 +102,7 @@ class PolarizedRays(RealRays):
             rows = [[c, -s, zero], [s, c, zero], [zero, zero, one]]
         return be.stack([be.stack(row) for row in rows])
 
-    def rotate_x(self, rx):
+    def rotate_x(self, rx: ScalarOrArray) -> None:
         """Rotate the rays and their PRT matrices about the x-axis.
 
         Args:
@@ -106,7 +111,7 @@ class PolarizedRays(RealRays):
         super().rotate_x(rx)
         self._rotate_matrices(self._rotation(0, rx))
 
-    def rotate_y(self, ry):
+    def rotate_y(self, ry: ScalarOrArray) -> None:
         """Rotate the rays and their PRT matrices about the y-axis.
 
         Args:
@@ -115,7 +120,7 @@ class PolarizedRays(RealRays):
         super().rotate_y(ry)
         self._rotate_matrices(self._rotation(1, ry))
 
-    def rotate_z(self, rz):
+    def rotate_z(self, rz: ScalarOrArray) -> None:
         """Rotate the rays and their PRT matrices about the z-axis.
 
         Args:
