@@ -33,6 +33,35 @@ def _is_step_reflective(step: SequenceStep, base_surface: Surface) -> bool:
     return getattr(base_surface.interaction_model, "is_reflective", False)
 
 
+def _reverses_direction(
+    step: SequenceStep,
+    base_surface: Surface,
+    reverse: bool,
+    next_index: int | None,
+) -> bool:
+    """Whether the traversal direction flips after this step.
+
+    A forced reflection (``"reflect"``) always flips it. A nominal mirror
+    flips it only when the sequence turns back through the surfaces on the
+    side the ray came from. When the sequence continues in the same index
+    order, it follows the nominal folded path: the surfaces after a mirror
+    already describe the reflected leg (their ``material_pre`` is the medium
+    between the mirror and them), so they are traversed forward.
+
+    Args:
+        step: The step.
+        base_surface: The base surface of the step.
+        reverse: Whether the step itself is traversed in reverse.
+        next_index: The surface index of the following step, or ``None``.
+    """
+    if step.interaction_override == "reflect":
+        return True
+    if not _is_step_reflective(step, base_surface) or next_index is None:
+        return False
+    turns_back = next_index > step.index if reverse else next_index < step.index
+    return turns_back
+
+
 def _effective_exit_material(step: SequenceStep, base_surfaces: list[Surface]):
     """The material a ray is actually in when it leaves this step.
 
@@ -111,7 +140,7 @@ def resolve_sequence(
     # Refine reverse direction inference taking nominal mirrors into account
     refined_steps: list[SequenceStep] = []
     reverse = False
-    for step in steps:
+    for position, step in enumerate(steps):
         base_surface = base_surfaces[step.index]
         refined_steps.append(
             SequenceStep(
@@ -120,7 +149,8 @@ def resolve_sequence(
                 interaction_override=step.interaction_override,
             )
         )
-        if _is_step_reflective(step, base_surface):
+        next_index = steps[position + 1].index if position + 1 < len(steps) else None
+        if _reverses_direction(step, base_surface, reverse, next_index):
             reverse = not reverse
 
     steps = refined_steps

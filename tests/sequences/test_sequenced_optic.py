@@ -129,3 +129,53 @@ class TestSequencedOpticSerialization:
         restored = Optic.from_dict(data)
         assert "ghost" in restored.sequences
         assert len(restored.sequences["ghost"].surfaces) == 6
+
+
+def _folded_optic():
+    """A lens, a plane fold mirror at 45 deg and a second lens on the folded leg."""
+    import math
+
+    optic = Optic()
+    optic.surfaces.add(index=0, radius=be.inf, thickness=be.inf)
+    optic.surfaces.add(
+        index=1, radius=50.0, thickness=3.0, material=IdealMaterial(n=1.5), is_stop=True
+    )
+    optic.surfaces.add(index=2, radius=-50.0, thickness=20.0)
+    optic.surfaces.add(index=3, rx=math.pi / 4, material="mirror")
+    optic.surfaces.add(
+        index=4, x=0, y=-10, z=23, rx=math.pi / 2, radius=30.0,
+        material=IdealMaterial(n=1.6),
+    )  # fmt: skip
+    optic.surfaces.add(index=5, x=0, y=-12, z=23, rx=math.pi / 2, radius=40.0)
+    optic.surfaces.add(index=6, x=0, y=-30, z=23, rx=math.pi / 2)
+    optic.fields.set_type("angle")
+    optic.fields.add(y=0)
+    optic.set_aperture("EPD", 5.0)
+    optic.wavelengths.add(0.55, is_primary=True)
+    return optic
+
+
+class TestNominalMirrors:
+    def test_nominal_sequence_of_a_folded_optic(self, set_test_backend):
+        """The nominal steps of an optic with one fold mirror and a lens after
+        it reproduce optic.trace (the lens after the mirror is traversed
+        forward, as the optic describes it)."""
+        optic = _folded_optic()
+        seq = optic.add_sequence("nominal", steps=list(range(7)))
+        assert [v.reverse for v in seq.surfaces] == [False] * 7
+        base = optic.trace(0, 0, 0.55, num_rays=5)
+        rays = seq.trace(0, 0, 0.55, num_rays=5)
+        for name in ("x", "y", "z", "L", "M", "N", "opd"):
+            assert_allclose(getattr(rays, name), getattr(base, name), atol=1e-12)
+
+    def test_ghost_on_the_folded_leg(self, set_test_backend):
+        """A two-bounce ghost between the surfaces of the second lens."""
+        optic = _folded_optic()
+        seq = optic.add_sequence(
+            "ghost", steps=[0, 1, 2, 3, 4, (5, "reflect"), (4, "reflect"), 5, 6]
+        )
+        assert [v.reverse for v in seq.surfaces] == [
+            False, False, False, False, False, False, True, False, False,
+        ]  # fmt: skip
+        rays = seq.trace(0, 0, 0.55, num_rays=5)
+        assert be.all(be.isfinite(rays.x))

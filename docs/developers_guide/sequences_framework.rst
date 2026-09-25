@@ -106,8 +106,14 @@ accepted identically, since that is the shape a pair round-trips to through JSON
 Direction is not specified explicitly; it starts forward and flips after
 every reflective step, since a reflection is what physically reverses the direction of
 propagation. A surface that is itself a nominal mirror (``is_reflective`` already true on
-its base interaction model, e.g. the primary of a Cassegrain) also flips the direction
-even when the step gives no explicit override.
+its base interaction model, e.g. the primary of a Cassegrain) flips the direction only
+when the sequence turns back at it, that is when the next step returns to the surfaces on
+the side the ray came from (a double pass through ``[0, 1, 2, 3, 2, 1]`` with a mirror
+at 3). When the next step continues in the same index order, the sequence follows the
+optic's nominal folded path: the surfaces after a mirror already describe the reflected
+leg (their ``material_pre`` is the medium between the mirror and them), so they are
+traversed forward, and the nominal steps ``list(range(n))`` of any optic reproduce
+``optic.trace``.
 :func:`~optiland.sequences.steps.parse_steps` implements the raw-step inference;
 :func:`~optiland.sequences.resolver.resolve_sequence` refines it against each base
 surface's nominal reflectivity.
