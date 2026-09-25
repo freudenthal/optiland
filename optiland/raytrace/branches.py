@@ -759,10 +759,8 @@ class BranchTracer:
         ``AnisotropicRays``, so ``trace`` gives the rays of the branch and
         every analysis that takes a sequenced optic works on the branch.
 
-        ``SequencedOptic`` validates the media of adjacent steps with its own
-        rule for mirrors and refuses a path through a mirror of the optic
-        (``SequenceValidationError``); the branches of ``trace_all`` do not
-        need it (their views keep the mirror convention of ``Optic``).
+        A mirror of the optic keeps the direction of the path, as in
+        ``Optic``; a reflected child of a splitting surface reverses it.
 
         Args:
             key: The branch key.

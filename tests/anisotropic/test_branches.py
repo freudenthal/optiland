@@ -476,3 +476,10 @@ def test_folded_system_with_ghosts(set_test_backend):
     assert back + (("s2", "T"), ("s1", "T")) in result.branches
     assert result[(("s1", "R"),)].terminal == "returned"
     _closed(result.ledger)
+    # The sequence of a branch through the mirror reproduces the branch.
+    tracer = BranchTracer(optic, ghosts=[1, 2, 4, 5])
+    for key in (tuple(main.key), back + (("s2", "T"), ("s1", "T"))):
+        rays = tracer.sequence(key).trace(0.0, 0.0, 0.55, num_rays=3)
+        for name in ("x", "y", "z", "L", "M", "N", "i"):
+            diff = _np(getattr(rays, name)) - _np(getattr(result[key].rays, name))
+            assert np.nanmax(np.abs(diff)) < 1e-12
