@@ -125,11 +125,38 @@ class TestResolveSequence:
             False,
         ]
 
-    def test_nominal_mirror_infers_reverse_direction(self):
-        # Surface 1 is a nominal mirror (e.g. in a Cassegrain telescope)
-        surfaces = _build_chain([AIR, AIR, AIR], reflective_indices={1})
-        views = resolve_sequence(surfaces, [0, 1, 2])
-        assert [v.reverse for v in views] == [False, False, True]
+    def test_nominal_mirror_keeps_direction_in_nominal_order(self):
+        # Surface 1 is a nominal mirror. Surface 2 follows it in the nominal
+        # (folded) order: its material_pre is the medium after the mirror, so
+        # it is traversed forward.
+        surfaces = _build_chain([AIR, AIR, GLASS_A, AIR], reflective_indices={1})
+        views = resolve_sequence(surfaces, [0, 1, 2, 3])
+        assert [v.reverse for v in views] == [False, False, False, False]
+
+    def test_nominal_mirror_reverses_when_sequence_turns_back(self):
+        # A double pass: the sequence returns through surfaces 2 and 1 after
+        # the nominal mirror 3, so they are traversed in reverse.
+        surfaces = _build_chain([AIR, GLASS_A, AIR, AIR], reflective_indices={3})
+        views = resolve_sequence(surfaces, [0, 1, 2, 3, 2, 1])
+        assert [v.reverse for v in views] == [False, False, False, False, True, True]
+
+    def test_nominal_mirror_on_a_reversed_leg(self):
+        # A ghost reflected at surface 4 passes the nominal mirror 3 backwards
+        # and continues backwards through surfaces 2 and 1.
+        surfaces = _build_chain(
+            [AIR, GLASS_A, AIR, AIR, GLASS_B, AIR], reflective_indices={3}
+        )
+        views = resolve_sequence(surfaces, [0, 1, 2, 3, (4, "reflect"), 3, 2, 1])
+        assert [v.reverse for v in views] == [
+            False,
+            False,
+            False,
+            False,
+            False,
+            True,
+            True,
+            True,
+        ]
 
     def test_skipped_surface_breaks_medium_chain(self):
         surfaces = _build_chain([AIR, GLASS_A, GLASS_B])
