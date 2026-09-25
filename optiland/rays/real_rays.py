@@ -266,8 +266,10 @@ class RealRays(BaseRays):
         nx, ny, nz, dot = self._align_surface_normal(nx, ny, nz)
 
         if is_reflective:
-            sgn = -1
-            n2c = n2 * sgn
+            # The reflected order leaves against the aligned normal (the minus
+            # sign of the square root below); the tangential part keeps its
+            # sign, as for a plane mirror. A negative index here returned -k_out.
+            n2c = n2
             self.L = (
                 self.L0 * d * n1 * ny**2
                 + self.L0 * d * n1 * nz**2
@@ -406,8 +408,7 @@ class RealRays(BaseRays):
             ) / (d * n2c)
 
         else:
-            sgn = 1
-            n2c = n2 * sgn
+            n2c = n2
             self.L = (
                 self.L0 * d * n1 * ny**2
                 + self.L0 * d * n1 * nz**2
