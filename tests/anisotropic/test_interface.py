@@ -4,8 +4,9 @@ Closed forms: the Fresnel coefficients of the fixed ``JonesFresnel`` (isotropic
 limit; the comparison with ``JonesFresnel`` itself is a cross-check of the
 integration branch, because this branch does not contain the fix), Lekner 1991
 Eqs. (34), (35), (42) (isotropic | uniaxial; t_se = +2 q1 A / D, the printed
-sign is a misprint), and the project's oracle cases 1, 6 and 10 (calcite
-walk-off, a forward mode with Re q < 0, the Glan-Taylor surfaces).
+sign is a misprint), and the project's oracle cases 1, 2, 6 and 10 (calcite
+walk-off, the Wollaston prism, a forward mode with Re q < 0, the Glan-Taylor
+surfaces).
 """
 
 from __future__ import annotations
@@ -489,3 +490,38 @@ def test_torch_gradient_of_transmitted_power():
         assert abs(grad.item() - fd) < 1e-6 * abs(fd)
     finally:
         be.set_backend("numpy")
+
+
+def test_wollaston_case2(set_test_backend):
+    """Oracle case 2 (register E-19): a calcite Wollaston prism, wedge 20°, at
+    normal incidence. Prism 1 axis x̂, prism 2 axis ŷ, internal face normal
+    (sin 20°, 0, cos 20°), exit face ẑ into air. An anisotropic A and an
+    anisotropic B at a tilted face.
+
+    y-pol (o → e) leaves at -3.6217511833°, x-pol (e → o) at +3.5692606184°
+    (printed to 10 decimals from indices printed to 10 decimals: 1E-8). The
+    Snell chain n1 sin a = n2 sin b, exit angle arcsin(n2 sin(a - b)), with the
+    same indices: 1E-12.
+    """
+    n_o, n_e = CALCITE
+    prism1 = _uniaxial(n_o, n_e, [1.0, 0.0, 0.0])
+    prism2 = _uniaxial(n_o, n_e, [0.0, 1.0, 0.0])
+    a = math.radians(20.0)
+    face = np.array([math.sin(a), 0.0, math.cos(a)])
+    z = np.array([0.0, 0.0, 1.0])
+    expected = {"y": -3.6217511833, "x": 3.5692606184}
+    for pol, (n1, n2) in (("y", (n_o, n_e)), ("x", (n_e, n_o))):
+        e_in = np.array([0.0, 1.0, 0.0]) if pol == "y" else np.array([1.0, 0.0, 0.0])
+        modes = plane_wave_modes(z, prism1)
+        j = int(np.argmax(np.abs(_np(modes.E)[0] @ e_in)))
+        k, e = _np(modes.k)[0, j], _np(modes.E)[0, j]
+        for ma, mb, normal in ((prism1, prism2, face), (prism2, _iso(1.0), z)):
+            result = solve_interface(normal, ma, mb, k, e)
+            power = _np(result.power)[0]
+            child = 2 + int(np.argmax(power[2:]))
+            k, e = _np(result.k)[0, child], _np(result.E)[0, child]
+        angle = math.degrees(math.atan2(k[0].real, k[2].real))
+        b = math.asin(n1 * math.sin(a) / n2)
+        snell = math.degrees(math.asin(n2 * math.sin(a - b)))
+        assert abs(angle - snell) < 1e-12
+        assert abs(angle - expected[pol]) < 1e-8
