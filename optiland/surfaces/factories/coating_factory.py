@@ -53,6 +53,8 @@ class CoatingFactory:
             return coating
 
         if isinstance(coating, str) and coating.lower() == "fresnel":
-            return FresnelCoating(material_pre, material_post)
+            fresnel = FresnelCoating(material_pre, material_post)
+            fresnel.follows_surface = True
+            return fresnel
 
         return None

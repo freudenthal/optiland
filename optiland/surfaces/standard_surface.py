@@ -159,13 +159,34 @@ class Surface(ObserverMixin):
 
     def _on_upstream_material_change(self) -> None:
         """Called by the upstream (previous) surface when its material changes."""
-        if isinstance(getattr(self.interaction_model, "coating", None), FresnelCoating):
-            self.set_fresnel_coating()
-        elif isinstance(
-            getattr(self.interaction_model, "coating", None), ThinFilmCoating
-        ):
-            self.interaction_model.coating.stack.incident_material = self.material_pre
-            self.interaction_model.coating.stack.substrate_material = self.material_post
+        self._update_coating_materials()
+
+    def _update_coating_materials(self) -> None:
+        """Bind a Fresnel or thin-film coating to the materials of the surface.
+
+        The incident material of the coating is ``material_pre``. The exit
+        material is ``material_post``, except for a coating that the user gave
+        to a mirror: a reflecting surface with ``material_post ==
+        material_pre``. There, ``material_post`` is the incident medium again,
+        so the coating keeps its own exit material (the mirror substrate). An
+        interface of a medium with itself has r = 0.
+        """
+        coating = getattr(self.interaction_model, "coating", None)
+        is_mirror = (
+            getattr(self.interaction_model, "is_reflective", False)
+            and self.material_post == self.material_pre
+        )
+        if isinstance(coating, FresnelCoating):
+            if is_mirror and not getattr(coating, "follows_surface", False):
+                self.set_fresnel_coating(coating.material_post)
+            else:
+                self.set_fresnel_coating()
+        elif isinstance(coating, ThinFilmCoating):
+            coating.material_pre = self.material_pre
+            coating.stack.incident_material = self.material_pre
+            if not is_mirror:
+                coating.material_post = self.material_post
+                coating.stack.substrate_material = self.material_post
 
     @property
     def previous_surface(self):
@@ -198,12 +219,7 @@ class Surface(ObserverMixin):
         self._material_post = material
 
         # Update coating for new material
-        _coating = getattr(self.interaction_model, "coating", None)
-        if isinstance(_coating, FresnelCoating):
-            self.set_fresnel_coating()
-        elif isinstance(_coating, ThinFilmCoating):
-            _coating.stack.incident_material = self.material_pre
-            _coating.stack.substrate_material = self.material_post
+        self._update_coating_materials()
 
         self._notify()
 
@@ -358,11 +374,21 @@ class Surface(ObserverMixin):
         self.aoi = be.empty(0)
         self.opd = be.empty(0)
 
-    def set_fresnel_coating(self):
-        """Sets the coating of the surface to a Fresnel coating."""
-        self.interaction_model.coating = FresnelCoating(
-            self.material_pre, self.material_post
-        )
+    def set_fresnel_coating(self, material_post: BaseMaterial | None = None):
+        """Sets the coating of the surface to a Fresnel coating.
+
+        Args:
+            material_post (BaseMaterial, optional): The exit material of the
+                coating. Defaults to the material after the surface; the
+                coating then follows later material changes of the surface. A
+                mirror gives its substrate material here.
+        """
+        follows_surface = material_post is None
+        if follows_surface:
+            material_post = self.material_post
+        coating = FresnelCoating(self.material_pre, material_post)
+        coating.follows_surface = follows_surface
+        self.interaction_model.coating = coating
 
     def is_rotationally_symmetric(self):
         """Returns True if the surface is rotationally symmetric, False otherwise."""
