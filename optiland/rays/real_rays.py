@@ -547,8 +547,21 @@ class RealRays(BaseRays):
 
         self.normalize()
 
-    def update(self, jones_matrix: BEArray | None = None):
-        """Update ray properties (primarily used for polarization)."""
+    def update(
+        self,
+        jones_matrix: BEArray | None = None,
+        flux_factor: BEArray | None = None,
+    ):
+        """Update ray properties (primarily used for polarization).
+
+        Real rays carry no polarization state, so the Jones matrix and the
+        power factor of a polarized coating are ignored. The ray aimers trace
+        real rays through the coated surfaces of a polarized system.
+
+        Args:
+            jones_matrix: The Jones matrix of the surface (ignored).
+            flux_factor: The power factor of the surface (ignored).
+        """
 
     def normalize(self):
         """Normalize the direction vectors of the rays."""
