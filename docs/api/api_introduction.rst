@@ -21,6 +21,7 @@ The following sections provide detailed information about the various modules an
    :caption: Modules
 
    api_analysis
+   api_anisotropic
    api_prescription
    api_backend
    api_coatings
