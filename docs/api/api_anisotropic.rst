@@ -50,6 +50,76 @@ are in units of k0 = 2π/λ, the time dependence is exp(-iωt) and H' = η0 H.
    result.power  # (1, 4): r1, r2, t1, t2
    result.ray  # (1, 4, 3): the e child walks off by 6.2°
 
+Sequential tracing
+------------------
+
+A sequential system can contain plates, prisms and lenses of tensor materials.
+Each surface with a tensor material on one or both sides uses
+:class:`~optiland.interactions.anisotropic_model.AnisotropicInteractionModel`
+(``interaction_type="anisotropic"``). The optic must have a polarization state:
+the rays are then
+:class:`~optiland.rays.anisotropic_rays.AnisotropicRays`, which carry the wave
+vector k beside the ray direction.
+
+* A ray moves along its ray direction (L, M, N) = S / |S|. Surface
+  intersections use it.
+* A step Δr adds the optical path Re(k) · Δr to the OPD (in a crystal
+  n |Δr| cos ρ, ρ the walk-off) and multiplies the power by
+  exp(-2 k0 Im(k) · Δr).
+* At each anisotropic surface the rays follow one mode, the ``mode`` of the
+  model: ``"o"`` or ``"e"`` into a uniaxial material, ``"slow"`` or ``"fast"``
+  (the larger or the smaller index) into any tensor material, and ``"T"`` (the
+  summed transmitted field) into an isotropic medium. The defaults are
+  ``"slow"`` and ``"T"``. ``"t1"`` and ``"t2"`` are the s-like and the p-like
+  child of the solver; these labels depend on the plane of incidence of each
+  ray.
+* The model multiplies the PRT matrix of the selected child into ``rays.p`` and
+  the power factor |S · n̂| / |E|² of the child mode over that of the incident
+  mode into ``rays.flux_factor``. The ray power is ``|P E|**2`` times this
+  factor.
+* ``rays.mode`` is the mode after the last anisotropic surface;
+  ``rays.branch_key`` lists ``(surface label, mode)`` for each anisotropic
+  surface.
+* The paraxial trace uses the index of the mode of each medium along the
+  local z axis.
+
+The incident wave at a surface is a homogeneous wave along the real wave
+normal of the ray (in an isotropic medium: along the ray direction), as in
+:class:`~optiland.jones.JonesFresnel`. For lossless media the trace equals the
+exact plane-wave solution of a plate. In an absorbing medium the field of the
+solver is the exact (complex) field of the mode; the PRT then differs from the
+isotropic path with ``JonesFresnel`` (real s and p vectors) by about the
+extinction coefficient.
+
+.. code-block:: python
+
+   import numpy as np
+
+   from optiland.materials import IdealMaterial, UniaxialMaterial
+   from optiland.optic import Optic
+   from optiland.rays import create_polarization
+
+   c = np.sqrt(0.5)
+   calcite = UniaxialMaterial(
+       IdealMaterial(1.6583434042), IdealMaterial(1.4861300612), (c, 0.0, c)
+   )
+   optic = Optic()
+   optic.surfaces.add(index=0, radius=np.inf, thickness=np.inf)
+   optic.surfaces.add(
+       index=1, thickness=2.0, material=calcite, is_stop=True,
+       interaction_type="anisotropic",
+   )
+   optic.surfaces.add(index=2, thickness=5.0, interaction_type="anisotropic")
+   optic.surfaces.add(index=3)
+   optic.set_aperture(aperture_type="EPD", value=2.0)
+   optic.fields.set_type(field_type="angle")
+   optic.fields.add(y=0.0)
+   optic.wavelengths.add(value=0.5893, is_primary=True)
+   optic.updater.set_polarization(create_polarization("H"))
+   optic.surfaces[1].interaction_model.mode = "e"
+   rays = optic.trace(Hx=0, Hy=0, wavelength=0.5893, num_rays=5)
+   rays.x  # the e rays walk off by -0.218 mm (2 mm of calcite cut at 45°)
+
 .. autosummary::
    :toctree: anisotropic/
    :caption: Anisotropic Interface Modules

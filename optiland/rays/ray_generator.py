@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import optiland.backend as be
+from optiland.rays.anisotropic_rays import AnisotropicRays
 from optiland.rays.polarized_rays import PolarizedRays
 from optiland.rays.ray_aiming.registry import create_ray_aimer
 from optiland.rays.real_rays import RealRays
@@ -90,15 +91,18 @@ class RayGenerator:
 
         wavelength = be.ones_like(x0) * wavelength
 
+        uses_tensors = getattr(self.optic.surfaces, "uses_tensor_materials", False)
         if self.optic.polarization == "ignore":
-            if self.optic.surfaces.uses_polarization:
+            if self.optic.surfaces.uses_polarization or uses_tensors:
                 raise ValueError(
                     "Polarization must be set when surfaces have "
-                    "polarization-dependent coatings.",
+                    "polarization-dependent coatings or tensor materials.",
                 )
             rays = RealRays(
                 x0, y0, z0, L, M, N, intensity=intensity, wavelength=wavelength
             )
+        elif uses_tensors:
+            rays = AnisotropicRays(x0, y0, z0, L, M, N, intensity, wavelength)
         else:
             rays = PolarizedRays(x0, y0, z0, L, M, N, intensity, wavelength)
         if retain_launch:

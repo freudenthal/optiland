@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 
 import optiland.backend as be
 from optiland.coatings import BaseCoatingPolarized
+from optiland.materials.anisotropic import BaseTensorMaterial
 from optiland.paraxial_path import (
     ParaxialPath,
     build_paraxial_path,
@@ -419,6 +420,13 @@ class SurfaceGroup:
         return False
 
     @property
+    def uses_tensor_materials(self):
+        """bool: True if any surface has a tensor material after it."""
+        return any(
+            isinstance(surf.material_post, BaseTensorMaterial) for surf in self.surfaces
+        )
+
+    @property
     def total_track(self):
         """float: the span of the unfolded signed axial surface coordinates.
 
@@ -472,7 +480,22 @@ class SurfaceGroup:
         """
         n = []
         for surface in self.surfaces:
-            n.append(be.atleast_1d(surface.material_post.n(wavelength)))
+            material = surface.material_post
+            if isinstance(material, BaseTensorMaterial):
+                # No single index: the paraxial index of the mode that the
+                # interaction model of the surface selects.
+                paraxial_index = getattr(
+                    surface.interaction_model, "paraxial_index", None
+                )
+                if paraxial_index is None:
+                    raise TypeError(
+                        "A surface before a tensor material needs an "
+                        "interaction model with a paraxial index "
+                        "(interaction_type='anisotropic')."
+                    )
+                n.append(be.atleast_1d(paraxial_index(wavelength)))
+            else:
+                n.append(be.atleast_1d(material.n(wavelength)))
         return be.ravel(be.array(n))
 
     def get_thickness(self, surface_number):

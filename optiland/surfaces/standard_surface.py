@@ -22,6 +22,7 @@ from optiland.geometries import BaseGeometry
 from optiland.interactions.base import BaseInteractionModel
 from optiland.interactions.refractive_reflective_model import RefractiveReflectiveModel
 from optiland.materials import BaseMaterial
+from optiland.materials.anisotropic import BaseTensorMaterial
 from optiland.physical_apertures import BaseAperture
 from optiland.physical_apertures.radial import configure_aperture
 from optiland.scatter import BaseBSDF
@@ -314,10 +315,15 @@ class Surface(ObserverMixin):
 
         """
         t = _aperture_aware_distance(self, rays)
-        self.material_pre.propagation_model.propagate(rays, t)
+        material = self.material_pre
+        material.propagation_model.propagate(rays, t)
         # t is oriented along the ray: virtual propagation subtracts OPL.
         # Real return paths after reflection still have t > 0 and add OPL.
-        rays.opd = rays.opd + t * self.material_pre.n(rays.w)
+        if isinstance(material, BaseTensorMaterial):
+            # No single index: the optical path is Re(k) · Δr of the ray.
+            rays.opd = rays.opd + rays.optical_path(t)
+        else:
+            rays.opd = rays.opd + t * material.n(rays.w)
         if self.aperture:
             self.aperture.clip(rays)
         rays = self.interaction_model.interact_real_rays(rays)
