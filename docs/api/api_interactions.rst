@@ -8,6 +8,7 @@ define how rays interact with surfaces.
    :toctree: interactions/
    :caption: Interaction Modules
 
+   interactions.anisotropic_model
    interactions.base
    interactions.diffractive_model
    interactions.refractive_reflective_model

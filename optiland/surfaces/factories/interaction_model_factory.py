@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from optiland._suggest import options_hint
+from optiland.interactions.anisotropic_model import AnisotropicInteractionModel
 from optiland.interactions.diffractive_model import DiffractiveInteractionModel
 from optiland.interactions.phase_interaction_model import PhaseInteractionModel
 from optiland.interactions.refractive_reflective_model import RefractiveReflectiveModel
@@ -93,7 +94,23 @@ def _build_phase(
     )
 
 
+def _build_anisotropic(
+    parent_surface: Surface | None,
+    is_reflective: bool,
+    coating: BaseCoating | None,
+    bsdf: BaseBSDF | None,
+    **_,
+) -> AnisotropicInteractionModel:
+    return AnisotropicInteractionModel(
+        parent_surface=parent_surface,
+        is_reflective=is_reflective,
+        coating=coating,
+        bsdf=bsdf,
+    )
+
+
 _INTERACTION_REGISTRY: dict[str, Callable] = {
+    "anisotropic": _build_anisotropic,
     "refractive_reflective": _build_refractive_reflective,
     "thin_lens": _build_thin_lens,
     "diffractive": _build_diffractive,

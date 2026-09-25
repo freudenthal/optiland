@@ -57,6 +57,7 @@ import numpy as np
 
 import optiland.backend as be
 from optiland.materials.base import BaseMaterial
+from optiland.propagation.anisotropic import AnisotropicPropagation
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -396,7 +397,8 @@ class BaseTensorMaterial(BaseMaterial):  # type: ignore[no-untyped-call]
         rotation: The crystal-to-global rotation R (a proper 3 x 3 rotation).
             None is the identity.
         propagation_model: The propagation model. None gives the default
-            homogeneous model.
+            ``AnisotropicPropagation``: rays move along their ray direction
+            with the phase and the attenuation of their wave vector.
     """
 
     def __init__(
@@ -404,6 +406,8 @@ class BaseTensorMaterial(BaseMaterial):  # type: ignore[no-untyped-call]
         rotation: Any = None,
         propagation_model: BasePropagationModel | None = None,
     ):
+        if propagation_model is None:
+            propagation_model = AnisotropicPropagation(self)
         super().__init__(propagation_model)
         self.rotation = _check_rotation(rotation)
 

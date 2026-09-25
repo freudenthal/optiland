@@ -11,6 +11,7 @@ Core Ray Modules
    :toctree: rays/
    :caption: Ray Modules
 
+   optiland.rays.anisotropic_rays
    optiland.rays.paraxial_rays
    optiland.rays.polarization_state
    optiland.rays.polarized_rays

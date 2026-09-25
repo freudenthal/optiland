@@ -169,7 +169,12 @@ the Post constraint tr(μ⁻¹(ξ + ζ)).
    eps = calcite.epsilon(0.5893)  # (1, 3, 3) complex
 
 A tensor material has no single refractive index: ``n`` and ``k`` raise
-``TypeError``. The scalar materials do not change.
+``TypeError``. The scalar materials do not change. The default propagation
+model of a tensor material is
+:class:`~optiland.propagation.anisotropic.AnisotropicPropagation`: a ray moves
+along its ray direction (the Poynting vector) and its power falls with the
+imaginary part of its wave vector (see :doc:`api_anisotropic`, "Sequential
+tracing").
 
 .. autosummary::
    :toctree: materials/
