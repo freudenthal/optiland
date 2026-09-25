@@ -80,7 +80,7 @@ vector k beside the ray direction.
 * ``rays.mode`` is the mode after the last anisotropic surface;
   ``rays.branch_key`` has one entry per anisotropic surface:
   ``(label, "T")`` into an isotropic medium, ``(label, "T", mode)`` into an
-  anisotropic one (``"R"`` for a reflection, below).
+  anisotropic one (``"R"`` for a reflection and ``"F"`` for a fold, below).
 * The paraxial trace uses the index of the mode of each medium along the
   local z axis.
 
@@ -121,6 +121,39 @@ extinction coefficient.
    rays = optic.trace(Hx=0, Hy=0, wavelength=0.5893, num_rays=5)
    rays.x  # the e rays walk off by -0.218 mm (2 mm of calcite cut at 45°)
 
+Folds inside crystals
+---------------------
+
+A mirror surface next to a tensor material is a fold inside the crystal: the
+hypotenuse of a right-angle prism (total internal reflection), a roof or Porro
+face, a metal or a perfect mirror on a crystal face. List it as any Optiland
+mirror, with ``material="mirror"`` and ``interaction_type="anisotropic"``. The
+crystal is then on both sides of the surface, and the next surface sees it as
+its incident medium. The model reflects into one mode of the crystal (its
+``mode``, default ``"slow"``) and takes the medium behind the face from
+``far_material``: None for air (a bare face; below the critical angle part of
+the power leaves through it), any scalar or tensor material (a metal), or
+``"perfect_conductor"`` (tangential E = 0, r = -1 at normal incidence). The
+branch key entry of a fold is ``(label, "F", mode)``: a reflection that keeps
+the listed order of the surfaces, while ``"R"`` sends a branch back.
+
+.. code-block:: python
+
+   import math
+
+   optic.surfaces.add(index=1, thickness=5.0, material=calcite, is_stop=True,
+                      interaction_type="anisotropic")
+   optic.surfaces.add(index=2, x=0.0, y=0.0, z=5.0, rx=math.pi / 4,
+                      material="mirror", interaction_type="anisotropic")
+   optic.surfaces.add(index=3, x=0.0, y=5.0, z=5.0, rx=-math.pi / 2,
+                      interaction_type="anisotropic")
+   optic.surfaces.add(index=4, x=0.0, y=10.0, z=5.0, rx=-math.pi / 2)
+   optic.surfaces[2].interaction_model.far_material = None  # air: TIR
+
+In :class:`~optiland.raytrace.branches.BranchTracer` a fold splits into its
+reflected modes; the power of its transmitted children is the ledger field
+``escaped``, and the absorption of a metal fold is in ``absorbed``.
+
 Branch enumeration
 ------------------
 
@@ -133,8 +166,8 @@ branch back through the earlier surfaces (the views of
 bare-interface solver, so that R + T = 1. Branches below ``threshold`` times
 the launch power (default 1E-6) or past ``max_reflections`` are pruned, and
 their power is reported. The result maps each branch key to its rays and
-keeps a power ledger (kept, returned, pruned, unfollowed, evanescent,
-clipped, absorbed); for a lossless system the ledger adds to 1.
+keeps a power ledger (kept, returned, pruned, unfollowed, escaped,
+evanescent, clipped, absorbed); for a lossless system the ledger adds to 1.
 
 .. code-block:: python
 

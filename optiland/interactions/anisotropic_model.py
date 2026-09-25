@@ -43,6 +43,17 @@ Modes (the ``mode`` argument):
   for a reflection). These labels depend on the plane of incidence of each ray; the
   same label can be a different physical mode for two rays of a fan.
 
+**Folds.** A mirror surface (``material="mirror"``, ``is_reflective=True`` at
+construction) next to a tensor material is a fold inside the crystal: the
+hypotenuse of a right-angle prism (total internal reflection), a roof or
+Porro face, a metal or a perfect mirror on a crystal face. The crystal is on
+both sides of the listed surface, so the next surface sees it as its incident
+medium, as for any Optiland mirror. The model solves the interface between
+the incident medium and ``far_material`` (air by default: a bare face; a
+metal; or ``"perfect_conductor"``) and follows one reflected mode. In the
+branch key a fold is ``(label, "F", mode)``: a reflection that follows the
+listed surfaces (``"R"`` reverses them).
+
 The power factor of the surface is g_out / g_in, with g = |S · n̂| / |E|² of
 the incident mode and of the selected child mode (unit amplitude). The ray
 power is then ``|P E|**2 * flux_factor`` (as for ``JonesFresnel``, whose factor
@@ -72,6 +83,7 @@ from optiland.anisotropic.eigenmodes import plane_wave_modes
 from optiland.anisotropic.frames import rotate_constitutive, to_global
 from optiland.anisotropic.interface import constitutive_matrix, solve_interface
 from optiland.interactions.base import BaseInteractionModel
+from optiland.materials import IdealMaterial
 from optiland.materials.anisotropic import BaseTensorMaterial, UniaxialMaterial
 from optiland.rays.anisotropic_rays import AnisotropicRays
 from optiland.rays.polarized_rays import PolarizedRays
@@ -87,6 +99,9 @@ Array = Any
 
 #: The mode labels of :class:`AnisotropicInteractionModel`.
 MODES = ("T", "R", "slow", "fast", "o", "e", "t1", "t2")
+
+#: The ``far_material`` of a perfect mirror (no field in the far medium).
+PERFECT_CONDUCTOR = "perfect_conductor"
 
 _R1 = 0  # the indices of the children r1, r2, t1, t2 on the child axis
 _R2 = 1
@@ -159,10 +174,11 @@ class AnisotropicInteractionModel(BaseInteractionModel):  # type: ignore[no-unty
 
     Args:
         parent_surface: The surface of the model.
-        is_reflective: Must be False at construction (a mirror next to a
-            tensor material is not supported). A reflecting ``SurfaceView``
-            sets it on its own copy of the model; the model then follows a
-            reflected child and takes both media from the view's
+        is_reflective: True for a fold (a mirror surface of the optic): the
+            model reflects into a mode of the incident medium and takes the
+            far medium from ``far_material``. A reflecting ``SurfaceView`` of
+            a refracting surface also sets it on its own copy of the model
+            (a ghost); the model then takes both media from the view's
             ``interface_materials``.
         coating: Must be None. The interface solver gives the bare-interface
             physics; coatings on anisotropic surfaces are not supported.
@@ -172,6 +188,9 @@ class AnisotropicInteractionModel(BaseInteractionModel):  # type: ignore[no-unty
             medium and ``"slow"`` into an anisotropic medium.
         label: The surface label in the branch key of the rays. None uses the
             surface comment.
+        far_material: The medium behind a fold: None for air (a bare face),
+            any scalar or tensor material (a metal), or
+            ``"perfect_conductor"`` (a perfect mirror). Used only by a fold.
     """
 
     interaction_type = "anisotropic"
@@ -184,22 +203,40 @@ class AnisotropicInteractionModel(BaseInteractionModel):  # type: ignore[no-unty
         bsdf: BaseBSDF | None = None,
         mode: str | None = None,
         label: str | None = None,
+        far_material: Any = None,
     ):
-        if is_reflective:
-            raise NotImplementedError(
-                "A reflective surface next to a tensor material is not supported."
-            )
         if mode is not None and mode not in MODES:
             raise ValueError(f"Unknown mode {mode!r}; the modes are {MODES}.")
+        if isinstance(far_material, str) and far_material != PERFECT_CONDUCTOR:
+            raise ValueError(
+                f"far_material must be a material or {PERFECT_CONDUCTOR!r}, "
+                f"not {far_material!r}."
+            )
         super().__init__(parent_surface, is_reflective, coating, bsdf)
         self.mode = mode
         self.label = label
+        self.far_material = far_material
+        self.fold = bool(is_reflective)
 
     def to_dict(self) -> dict[str, Any]:
         """Returns a dictionary representation of the model."""
         data: dict[str, Any] = super().to_dict()  # type: ignore[no-untyped-call]
-        data.update({"mode": self.mode, "label": self.label})
+        far = self.far_material
+        if far is not None and not isinstance(far, str):
+            far = far.to_dict()
+        data.update({"mode": self.mode, "label": self.label, "far_material": far})
         return data
+
+    @classmethod
+    def _deserialize_init_data(cls, data: dict[str, Any]) -> dict[str, Any]:
+        """Return the constructor arguments of a dictionary (see ``to_dict``)."""
+        from optiland.materials.base import BaseMaterial
+
+        init_data: dict[str, Any] = super()._deserialize_init_data(data)  # type: ignore[no-untyped-call]
+        far = init_data.get("far_material")
+        if isinstance(far, dict):
+            init_data["far_material"] = BaseMaterial.from_dict(far)  # type: ignore[no-untyped-call]
+        return init_data
 
     def flip(self) -> None:
         """Flip the interaction model (no state depends on the direction)."""
@@ -213,20 +250,28 @@ class AnisotropicInteractionModel(BaseInteractionModel):  # type: ignore[no-unty
         surface = self.parent_surface
         return getattr(surface, "comment", "") if surface is not None else ""
 
+    def far_medium(self) -> Any:
+        """Return the medium behind a fold (None for a perfect conductor)."""
+        if self.far_material is None:
+            return IdealMaterial(1.0)
+        if self.far_material == PERFECT_CONDUCTOR:
+            return None
+        return self.far_material
+
     def _interface_media(self) -> tuple[Any, Any]:
         """Return the media (A, B) on the incident and the far side.
 
         A ``SurfaceView`` gives them by ``interface_materials`` (for a
-        reflecting view, ``material_post`` is the incident medium).
+        reflecting view, ``material_post`` is the incident medium). A fold
+        has the incident medium on both sides of the listed surface; its far
+        medium is ``far_medium()`` (None for a perfect conductor).
         """
         media = getattr(self.parent_surface, "interface_materials", None)
+        if self.fold:
+            incident = media[0] if media is not None else self.material_pre
+            return incident, self.far_medium()
         if media is not None:
             return media[0], media[1]
-        if self.is_reflective:
-            raise NotImplementedError(
-                "A reflective surface next to a tensor material is supported "
-                "only as a reflecting SurfaceView (branch tracing)."
-            )
         return self.material_pre, self.material_post
 
     def _resolve_mode(self, isotropic_exit: bool, exit_material: Any) -> str:
@@ -372,12 +417,16 @@ class AnisotropicInteractionModel(BaseInteractionModel):  # type: ignore[no-unty
         w = be.atleast_1d(rays.w) + be.zeros((n_rays,))
         rotation = self._local_rotation()[None]
         material_a, material_b = self._interface_media()
+        reflect = bool(self.is_reflective)
+        if material_b is None and not reflect:
+            raise ValueError("A perfect conductor has no transmitted child.")
         m_a = rotate_constitutive(constitutive_matrix(material_a, w), rotation)
-        m_b = rotate_constitutive(constitutive_matrix(material_b, w), rotation)
+        m_b = None
+        if material_b is not None:
+            m_b = rotate_constitutive(constitutive_matrix(material_b, w), rotation)
         k_in, e_in, g_in = self._incident(rays, d, normal, m_a, material_a)
         result = solve_interface(normal, m_a, m_b, k_in, e_in)
 
-        reflect = bool(self.is_reflective)
         exit_modes = result.modes_a if reflect else result.modes_b
         exit_material = material_a if reflect else material_b
         isotropic_exit = exit_modes.isotropic
@@ -450,9 +499,11 @@ class AnisotropicInteractionModel(BaseInteractionModel):  # type: ignore[no-unty
 
         ``(label, "T")`` or ``(label, "R")`` into an isotropic exit medium;
         ``(label, "T", mode)`` or ``(label, "R", mode)`` into an anisotropic
-        one.
+        one. A fold reflection is ``"F"`` in place of ``"R"``.
         """
-        side = "R" if self.is_reflective else "T"
+        side = "T"
+        if self.is_reflective:
+            side = "F" if self.fold else "R"
         if mode in ("T", "R"):
             return (self._branch_label(), side)
         return (self._branch_label(), side, mode)
@@ -463,7 +514,7 @@ class AnisotropicInteractionModel(BaseInteractionModel):  # type: ignore[no-unty
         """Return the index of the medium after the surface for paraxial use.
 
         A scalar material gives n. A tensor material gives the real index of
-        the mode of the surface along the local z axis (``"T"`` and None: the
+        the mode of the surface along the local z axis (``"T"``, ``"R"`` and None: the
         first mode if the medium is isotropic along z, else the slow mode; the
         ``"o"`` and ``"e"`` modes of a material that is not uniaxial: the slow
         mode). This is an approximation for the first-order properties only.
@@ -485,7 +536,7 @@ class AnisotropicInteractionModel(BaseInteractionModel):  # type: ignore[no-unty
         n_rows = matrix.shape[0]
         modes = plane_wave_modes(_vectors(0.0, 0.0, 1.0, n_rows), matrix)
         k1, k2 = modes.k[:, 0, :], modes.k[:, 1, :]
-        if mode is None or mode == "T":
+        if mode is None or mode in ("T", "R"):
             mode = "t1" if bool(be.all(modes.degenerate)) else "slow"
         if mode in ("o", "e") and not isinstance(material, UniaxialMaterial):
             mode = "slow"
@@ -496,12 +547,18 @@ class AnisotropicInteractionModel(BaseInteractionModel):  # type: ignore[no-unty
     def interact_paraxial_rays(self, rays: ParaxialRays) -> ParaxialRays:
         """Refract paraxial rays with the index of the mode of each medium.
 
+        A fold reflects them as an Optiland mirror (u' = -u - 2y/R; the index
+        of its mode enters through ``SurfaceGroup.n``).
+
         Args:
             rays (ParaxialRays): The incoming paraxial rays.
 
         Returns:
             ParaxialRays: The outgoing paraxial rays.
         """
+        if self.is_reflective:
+            rays.u = -rays.u - 2 * rays.y / self.geometry.radius
+            return rays
         surface = self.parent_surface
         previous = surface.previous_surface if surface is not None else None
         pre_model = getattr(previous, "interaction_model", None)
