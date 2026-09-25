@@ -298,3 +298,34 @@ class TestSystem:
     def test_detector_frame_rejects_parallel_reference(self, set_test_backend):
         with pytest.raises(ValueError, match="parallel"):
             mueller.detector_frame(be.array([[1.0, 0.0, 0.0]]))
+
+
+class TestTiltedSurfaces:
+    """D-11: the geometrical transformation Q turns with the rays into and out
+    of the frame of a tilted surface, like the PRT: Q k_in = k_out."""
+
+    def test_tilted_plate(self, set_test_backend):
+        lens = optic.Optic()
+        lens.surfaces.add(index=0, radius=np.inf, thickness=np.inf)
+        tilt = {"rx": np.deg2rad(10.0), "ry": np.deg2rad(20.0)}
+        lens.surfaces.add(
+            index=1,
+            thickness=2.0,
+            material=IdealMaterial(1.5),
+            is_stop=True,
+            coating="fresnel",
+            **tilt,
+        )
+        lens.surfaces.add(index=2, thickness=5.0, coating="fresnel", **tilt)
+        lens.surfaces.add(index=3)
+        lens.set_aperture(aperture_type="EPD", value=2.0)
+        lens.fields.set_type(field_type="angle")
+        lens.fields.add(y=0.0)
+        lens.wavelengths.add(value=WL, is_primary=True)
+        lens.updater.set_polarization(create_polarization("H"))
+        rays = _chief(lens)
+        k_in = be.to_complex(_k_in(rays))[0]
+        for matrix in (rays.q, rays.p):
+            k_out = be.matmul(be.to_complex(matrix[0]), k_in)
+            assert_allclose(be.real(k_out), _k_out(rays)[0], rtol=0, atol=1e-12)
+            assert_allclose(be.imag(k_out), [0.0, 0.0, 0.0], rtol=0, atol=1e-12)
