@@ -75,10 +75,10 @@ class PolarizedRays(RealRays):
         Args:
             rotation: The rotation matrix R, shape (3, 3).
         """
-        r = be.to_complex(rotation)
-        self.p = be.matmul(r, be.to_complex(self.p))
+        # R + 0 P has the dtype of P (real or complex), on both backends.
+        self.p = be.matmul(rotation + 0 * self.p, self.p)
         if hasattr(self, "q"):
-            self.q = be.matmul(r, be.to_complex(self.q))
+            self.q = be.matmul(rotation + 0 * self.q, self.q)
 
     @staticmethod
     def _rotation(axis: int, angle) -> be.ndarray:
