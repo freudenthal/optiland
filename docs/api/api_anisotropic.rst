@@ -186,6 +186,38 @@ evanescent, clipped, absorbed); for a lossless system the ledger adds to 1.
 :class:`~optiland.sequences.SequencedOptic` that traces one branch, for any
 analysis of that branch.
 
+Grating orders
+--------------
+
+A grating surface (``surface_type="grating"``) splits too: one branch per
+listed diffraction order. ``DiffractiveInteractionModel.orders`` lists the
+orders (default: the geometry's ``grating_order``), ``efficiency`` gives the
+fraction of the incident power in each order (a number, or a callable of the
+wavelength and the incidence (θ, φ) in the grating frame), and
+``BranchTracer(orders={surface: (...)})`` selects orders per surface. The key
+entry of an order is ``(label, "T", "m+1")`` through a transmission grating and
+``(label, "F", "m+1")`` at a reflective grating, which keeps the listed order
+of the surfaces as any mirror does. An evanescent order is booked as
+``evanescent``, the orders that are not listed are in ``absorbed``. Without an
+efficiency each order carries the power of its parent (as a sequential trace
+does), so the ledger does not close.
+
+.. code-block:: python
+
+   grating = optic.surfaces[3].interaction_model
+   grating.orders = (-1, 0, 1)
+   grating.efficiency = {-1: 0.2, 0: 0.5, 1: 0.3}
+   result = BranchTracer(optic).trace_all(num_rays=5)
+   result[(("G", "T", "m+1"),)].power  # 0.3 of the launch
+
+Any interaction model can split in the same way: it implements
+:class:`~optiland.raytrace.branches.SplittingModel`, listing its children as
+:class:`~optiland.raytrace.branches.BranchChild` (the side ``"T"``, ``"F"`` or
+``"R"`` and the rest of the key entry) and tracing one child after
+``configure_branch``. :func:`~optiland.raytrace.incidence.incidence_domain`
+gives the range of (θ, φ, λ) that a scan of wavelengths, fields and
+configurations puts on a grating, for an element that tabulates its orders.
+
 .. autosummary::
    :toctree: anisotropic/
    :caption: Anisotropic Interface Modules

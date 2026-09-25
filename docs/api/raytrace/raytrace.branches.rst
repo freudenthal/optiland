@@ -15,6 +15,8 @@ raytrace.branches
    .. autosummary::
 
       Branch
+      BranchChild
       BranchResult
       BranchTracer
       PowerLedger
+      SplittingModel
