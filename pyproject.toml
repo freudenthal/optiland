@@ -148,6 +148,7 @@ module = [
     "optiland._types",
     "optiland._deprecation",
     "optiland.analysis.mueller",
+    "optiland.materials.anisotropic",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
