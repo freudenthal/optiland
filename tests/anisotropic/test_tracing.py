@@ -345,8 +345,8 @@ def test_mode_errors(set_test_backend):
         _trace(optic, ["o", "e"], _rays())
     with pytest.raises(ValueError, match="Unknown mode"):
         AnisotropicInteractionModel(parent_surface=None, mode="x")
-    with pytest.raises(NotImplementedError):
-        AnisotropicInteractionModel(parent_surface=None, is_reflective=True)
+    # A reflective model is a fold inside the crystal (test_crystal_folds.py).
+    assert AnisotropicInteractionModel(parent_surface=None, is_reflective=True).fold
     biaxial = BiaxialMaterial(
         IdealMaterial(1.5), IdealMaterial(1.6), IdealMaterial(1.7)
     )

@@ -20,8 +20,14 @@ The splitting surfaces are:
   ``optiland.anisotropic`` in its branches, so that R + T = 1 for a lossless
   interface.
 
-A reflection reverses the direction of travel: the branch then passes the
-earlier surfaces backwards (``optiland.sequences.SurfaceView``). A branch ends
+* every fold (a mirror surface of the optic with an
+  ``AnisotropicInteractionModel``, for example the hypotenuse of a crystal
+  prism): one branch per reflected eigenmode of the incident medium. A fold
+  keeps the listed order of the surfaces, as any Optiland mirror does.
+
+A reflection at a refracting surface reverses the direction of travel: the
+branch then passes the earlier surfaces backwards
+(``optiland.sequences.SurfaceView``). A branch ends
 at the image surface (kept), when it leaves through the first surface
 backwards (returned), when its power falls below ``threshold`` times the
 launch power, or when it would take more than ``max_reflections`` reflections
@@ -30,18 +36,23 @@ launch power, or when it would take more than ``max_reflections`` reflections
 **Branch key.** One entry per visit to a splitting surface, in trace order:
 ``(label, "T")`` or ``(label, "R")`` when the child leaves into an isotropic
 medium, ``(label, "T", mode)`` or ``(label, "R", mode)`` when it leaves into
-an anisotropic medium. The label is the model ``label``, else the surface
-comment, else ``"s<index>"``. The key alone gives the path of the branch.
+an anisotropic medium; ``"F"`` in place of ``"R"`` for a fold (a reflection
+that keeps the direction of the listing). The label is the model ``label``,
+else the surface comment, else ``"s<index>"``. The key alone gives the path of
+the branch.
 
 **Power ledger.** Each step of each branch adds its parent power to exactly
 one of: the children that the enumeration follows (``kept`` or ``returned`` at
 the end of their branch, ``pruned`` if dropped), ``unfollowed`` (the reflected
-children of an anisotropic surface that is not in ``ghosts``), ``evanescent``
+children of an anisotropic surface that is not in ``ghosts``), ``escaped``
+(the transmitted children of a fold face: the power that leaves the listed
+path through a bare fold face below the critical angle), ``evanescent``
 (rays that a surface loses: an evanescent child, or a total internal
 reflection that is not followed), ``clipped`` (aperture) and ``absorbed`` (the
-rest of the step: bulk absorption, and the reflection of a coated surface that
-is not split). For a lossless system traced with every split followed,
-``absorbed`` is 0 to rounding and the fields sum to the launch power.
+rest of the step: bulk absorption, the absorption of a metal fold, and the
+reflection of a coated surface that is not split). For a lossless system
+traced with every split followed, ``absorbed`` is 0 to rounding and the fields
+sum to the launch power.
 
 **Detector sums.** Branches that reach the image surface share the launch
 ray grid (ray j of each branch comes from launch ray j). The incoherent sum
@@ -93,6 +104,7 @@ LEDGER_FIELDS = (
     "returned",
     "pruned",
     "unfollowed",
+    "escaped",
     "evanescent",
     "clipped",
     "absorbed",
@@ -112,11 +124,13 @@ class PowerLedger:
             reflection limit, at the step where they were dropped.
         unfollowed: Power of the reflected children of anisotropic surfaces
             that are not in ``ghosts``.
+        escaped: Power of the transmitted children of fold faces (the rays
+            that leave the listed path through a bare fold face).
         evanescent: Power of rays that a surface loses (an evanescent child;
             a total internal reflection that the enumeration does not follow).
         clipped: Power of rays clipped by an aperture.
-        absorbed: The rest: bulk absorption, and the reflection of coated
-            surfaces that are not split.
+        absorbed: The rest: bulk absorption, the absorption of a metal fold,
+            and the reflection of coated surfaces that are not split.
     """
 
     launch: float
@@ -124,6 +138,7 @@ class PowerLedger:
     returned: float = 0.0
     pruned: float = 0.0
     unfollowed: float = 0.0
+    escaped: float = 0.0
     evanescent: float = 0.0
     clipped: float = 0.0
     absorbed: float = 0.0
@@ -373,12 +388,25 @@ def _alive(rays: AnisotropicRays, power: Array) -> Array:
 
 @dataclass
 class _Choice:
-    """One child at a splitting step."""
+    """One child at a splitting step.
+
+    ``side`` is the key letter: ``"T"``, ``"R"`` (a reflection that reverses
+    the direction) or ``"F"`` (a fold reflection, the direction kept).
+    ``escape`` marks the transmitted child of a fold (not followed; the
+    ``escaped`` ledger field).
+    """
 
     reflect: bool
     mode: str
     exit_anisotropic: bool
     followed: bool
+    side: str = "T"
+    escape: bool = False
+
+    @property
+    def turns(self) -> bool:
+        """True if the child reverses the direction of travel."""
+        return self.side == "R"
 
 
 @dataclass
@@ -482,6 +510,11 @@ class BranchTracer:
         model = self._base(index).interaction_model
         return index in self.ghosts or isinstance(model, AnisotropicInteractionModel)
 
+    def is_fold(self, index: int) -> bool:
+        """Return True if the surface is a fold (a mirror with the model)."""
+        model = self._base(index).interaction_model
+        return isinstance(model, AnisotropicInteractionModel) and model.fold
+
     def label(self, index: int) -> str:
         """Return the label of a surface in the branch key."""
         surface = self._base(index)
@@ -495,6 +528,8 @@ class BranchTracer:
         """Return the children of a splitting step, in branch order."""
         base = self._base(index)
         pre, post = resolve_view_materials(base, reverse, None)
+        if self.is_fold(index):
+            return self._fold_choices(base.interaction_model.far_medium(), pre)
         choices = []
         for reflect, medium in ((False, post), (True, pre)):
             followed = not reflect or index in self.ghosts
@@ -508,6 +543,29 @@ class BranchTracer:
             else:
                 mode = "R" if reflect else "T"
                 choices.append(_Choice(reflect, mode, False, followed))
+        for choice in choices:
+            choice.side = "R" if choice.reflect else "T"
+        return choices
+
+    @staticmethod
+    def _fold_choices(far: Any, incident: Any) -> list[_Choice]:
+        """Return the children of a fold: the reflected modes, then the
+        transmitted children into the far medium (none for a conductor)."""
+        choices = []
+        for reflect, medium in ((True, incident), (False, far)):
+            if medium is None:
+                continue
+            modes: tuple[str, ...] = ("R",) if reflect else ("T",)
+            if isinstance(medium, UniaxialMaterial):
+                modes = ("o", "e")
+            elif isinstance(medium, BaseTensorMaterial):
+                modes = ("slow", "fast")
+            side = "F" if reflect else "T"
+            anisotropic = isinstance(medium, BaseTensorMaterial)
+            choices += [
+                _Choice(reflect, m, anisotropic, reflect, side, not reflect)
+                for m in modes
+            ]
         return choices
 
     def _view(
@@ -515,7 +573,7 @@ class BranchTracer:
     ) -> SurfaceView:
         """Return a view of a step with its model set for a choice."""
         base = self._base(index)
-        override = "reflect" if choice is not None and choice.reflect else None
+        override = "reflect" if choice is not None and choice.turns else None
         view = SurfaceView(base, reverse, override, previous)
         if choice is not None:
             self._configure(view, index, choice)
@@ -627,11 +685,14 @@ class BranchTracer:
                 view = self._view(index, node.reverse, choice, node.views[-1])
                 child, power, lost = self._trace_child(node, view, index, choice)
                 ledger.evanescent += lost
+                if choice.escape:
+                    ledger.escaped += power
+                    continue
                 if not choice.followed:
                     ledger.unfollowed += power
                     continue
                 key = child.rays.branch_key
-                if choice.reflect and node.reflections >= self.max_reflections:
+                if choice.turns and node.reflections >= self.max_reflections:
                     self._prune(result, key, power, "reflections")
                 elif power <= self.threshold * launch_power:
                     self._prune(result, key, power, "threshold")
@@ -710,12 +771,17 @@ class BranchTracer:
     def _trace_child(
         self, node: _Node, view: SurfaceView, index: int, choice: _Choice
     ) -> tuple[_Node, float, float]:
-        """Trace one child of a splitting step; return it, its power, its loss."""
-        reverse = node.reverse != choice.reflect
+        """Trace one child of a splitting step; return it, its power, its loss.
+
+        The transmitted child of a fold into an absorbing medium (a metal) is
+        lost; its power is the metal's absorption (``absorbed``), not
+        ``evanescent``.
+        """
+        reverse = node.reverse != choice.turns
         child, kept, lost, clipped = self._advance(node, view, index, reverse)
-        child.reflections = node.reflections + (1 if choice.reflect else 0)
+        child.reflections = node.reflections + (1 if choice.turns else 0)
         power = _to_float(be.sum(kept))
-        lost_sum = _to_float(be.sum(lost))
+        lost_sum = 0.0 if choice.escape else _to_float(be.sum(lost))
         node.split.append((power + lost_sum, _to_float(be.sum(clipped))))
         return child, power, lost_sum
 
@@ -759,8 +825,9 @@ class BranchTracer:
         ``AnisotropicRays``, so ``trace`` gives the rays of the branch and
         every analysis that takes a sequenced optic works on the branch.
 
-        A mirror of the optic keeps the direction of the path, as in
-        ``Optic``; a reflected child of a splitting surface reverses it.
+        A mirror of the optic (also a fold, ``"F"``) keeps the direction of
+        the path, as in ``Optic``; a reflected child ``"R"`` of a splitting
+        surface reverses it.
 
         Args:
             key: The branch key.
@@ -783,9 +850,9 @@ class BranchTracer:
                 raise ValueError(f"The key {key!r} ends before the path does.")
             choice = self._parse_entry(index, reverse, key[entry])
             entry += 1
-            steps.append((index, "reflect") if choice.reflect else index)
+            steps.append((index, "reflect") if choice.turns else index)
             plan.append((index, choice))
-            reverse = reverse != choice.reflect
+            reverse = reverse != choice.turns
         if entry != len(key):
             raise ValueError(f"The key {key!r} is longer than its path.")
         seq = SequencedOptic(self.optic, name or repr(key), steps)
@@ -804,9 +871,9 @@ class BranchTracer:
             raise ValueError(
                 f"Key entry {entry!r} does not match surface {index} ({label!r})."
             )
-        reflect = entry[1] == "R"
-        mode = entry[2] if len(entry) > 2 else entry[1]
+        side = entry[1]
+        mode = entry[2] if len(entry) > 2 else ("T" if side == "T" else "R")
         for choice in self._choices(index, reverse):
-            if choice.reflect == reflect and choice.mode == mode:
+            if choice.side == side and choice.mode == mode and not choice.escape:
                 return choice
         raise ValueError(f"Key entry {entry!r} is not a child of surface {index}.")

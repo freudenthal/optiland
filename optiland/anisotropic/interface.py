@@ -19,6 +19,12 @@ Lekner 1991; McClain, Hillman and Chipman 1993):
    a ψ_f(A) + r1 ψ_b1(A) + r2 ψ_b2(A) = t1 ψ_f1(B) + t2 ψ_f2(B).
 6. The children (r1, r2, t1, t2) rotate back to the global frame.
 
+A perfect conductor as medium B (``medium_b=None``) has no field inside it.
+Only the tangential E is continuous (E_x = E_y = 0 at z = 0); the jump of the
+tangential H' is the free surface current. The two B columns of the matching
+are then the unit H'_x and H'_y columns, and the transmitted children are
+zero (flagged evanescent, power 0): two reflected modes, two equations.
+
 Outputs per child j (register E-10, E-14; project decisions of 2026-09-25):
 
 * The power fraction is ±S_j · n̂ / S_in · n̂ with S = Re(E × H'*) / 2 at the
@@ -85,6 +91,8 @@ CHILD_LABELS = ("r1", "r2", "t1", "t2")
 
 _SIGN = np.array([-1.0, -1.0, 1.0, 1.0])
 _IS_T = np.array([0.0, 0.0, 1.0, 1.0])
+# The (E_x, E_y, H'_x, H'_y) columns of the surface current of a conductor.
+_CURRENT = np.array([[0.0, 0.0], [0.0, 0.0], [1.0, 0.0], [0.0, 1.0]])
 
 
 def constitutive_matrix(material: Any, wavelength: Any) -> Array:
@@ -208,7 +216,10 @@ def solve_interface(
         medium_a: Constitutive matrices [[ε, ξ], [ζ, μ]] of the incident
             medium in the global frame, shape (N, 6, 6) or (6, 6) (for
             example ``constitutive_matrix(material, wavelength)``).
-        medium_b: Constitutive matrices of the exit medium, the same shapes.
+        medium_b: Constitutive matrices of the exit medium, the same shapes,
+            or None for a perfect conductor (a perfect mirror: no
+            transmitted children; ``modes_b`` are then the modes of vacuum,
+            a placeholder).
         k_in: Incident wave vectors in units of k0, shape (N, 3) or (3,),
             complex allowed. For an isotropic A, k_in = n d̂; for an anisotropic
             A, the wave vector of the incident eigenmode (``plane_wave_modes``).
@@ -226,6 +237,9 @@ def solve_interface(
     normals = be.asarray(normal)
     n_normals = 1 if len(normals.shape) == 1 else normals.shape[0]
     n_rays = max(k_vec.shape[0], e_vec.shape[0], n_normals)
+    conductor = medium_b is None
+    if conductor:
+        medium_b = _c(np.eye(6))
     for m in (medium_a, medium_b):
         shape = getattr(m, "shape", np.shape(m))
         if len(shape) == 3:
@@ -256,9 +270,15 @@ def solve_interface(
     residual = coeff[:, 2]
 
     # Boundary matching: [ψ_b1(A), ψ_b2(A), -ψ_f1(B), -ψ_f2(B)] X = -[ψ_f(A)].
-    match = be.concatenate([modes_a.psi[:, :, 2:4], -modes_b.psi[:, :, 0:2]], axis=-1)
+    psi_b = modes_b.psi[:, :, 0:2]
+    if conductor:
+        # E_t = 0; the B unknowns are the surface current (the H'_t jump).
+        psi_b = be.broadcast_to(_c(_CURRENT)[None], (n_rays, 4, 2))
+    match = be.concatenate([modes_a.psi[:, :, 2:4], -psi_b], axis=-1)
     incident_psi = modes_a.psi[:, :, 0:2]
     jones = be.linalg.solve(match, -incident_psi)  # (N, 4, 2)
+    if conductor:
+        jones = jones * _c(1.0 - _IS_T)[None, :, None]
     amplitude = be.matmul(jones, a[:, :, None])[:, :, 0]
 
     # Child modes in the frame.
@@ -272,9 +292,10 @@ def solve_interface(
     psi_child = be.concatenate(
         [modes_a.psi[:, :, 2:4], modes_b.psi[:, :, 0:2]], axis=-1
     )  # (N, 4, 4): columns = children
-    evanescent = be.concatenate(
-        [modes_a.evanescent[:, 2:], modes_b.evanescent[:, :2]], axis=-1
-    )
+    evanescent_b = modes_b.evanescent[:, :2]
+    if conductor:
+        evanescent_b = be.zeros((n_rays, 2)) < 1.0
+    evanescent = be.concatenate([modes_a.evanescent[:, 2:], evanescent_b], axis=-1)
 
     k_child = (
         tangential[:, None, None] * e3[0][None, None, :]
@@ -311,6 +332,8 @@ def solve_interface(
         e_mode[:, :, :, None] * rows[:, :, None, :]
         + k_hat_child[:, :, :, None] * w[:, None, None, 2, :]
     )
+    if conductor:
+        prt_frame = prt_frame * _c(1.0 - _IS_T)[None, :, None, None]
     rct = be.transpose(rc, (0, 2, 1))
     prt = be.matmul(be.matmul(rct[:, None], prt_frame), rc[:, None])
 
