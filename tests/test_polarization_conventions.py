@@ -506,3 +506,42 @@ class TestTiltedSurfaces:
         expected = (1 - abs(rs) ** 2) ** 2 + (1 - abs(rp) ** 2) ** 2
         assert_allclose(total, expected, rtol=0, atol=1e-12)
         assert abs(sx * cy) > 0.1 and abs(sy) > 0.1  # a compound tilt
+
+
+class TestEqualIndexSurfaces:
+    """D-12: a refraction between equal indices (a dummy surface, the image
+    surface) returns k1 = k0 to rounding; the local basis must not take its
+    direction from the cross product of the two, so P stays the identity."""
+
+    def test_dummy_surfaces_keep_the_field(self, set_test_backend):
+        rng = np.random.default_rng(12)
+        lens = optic.Optic()
+        lens.surfaces.add(index=0, radius=np.inf, thickness=np.inf)
+        lens.surfaces.add(index=1, thickness=2.0, is_stop=True)
+        lens.surfaces.add(index=2, thickness=2.0)
+        lens.surfaces.add(index=3)
+        lens.set_aperture(aperture_type="EPD", value=2.0)
+        lens.fields.set_type(field_type="angle")
+        lens.fields.add(y=0.0)
+        lens.wavelengths.add(value=WL, is_primary=True)
+        lens.updater.set_polarization(create_polarization("H"))
+        theta = rng.uniform(0.0, 1.2, 50)
+        phi = rng.uniform(0.0, 2 * np.pi, 50)
+        d = np.stack(
+            [np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)]
+        )
+        rays = PolarizedRays(
+            be.array(-d[0] / d[2]),
+            be.array(-d[1] / d[2]),
+            be.array(-np.ones(50)),
+            be.array(d[0]),
+            be.array(d[1]),
+            be.array(d[2]),
+            be.array(np.ones(50)),
+            be.array(np.full(50, WL)),
+        )
+        lens.surfaces.trace(rays, skip=1)
+        eye = np.broadcast_to(np.eye(3), (50, 3, 3))
+        p = be.to_complex(rays.p)
+        assert_allclose(be.real(p), eye, rtol=0, atol=1e-12)
+        assert_allclose(be.imag(p), 0 * eye, rtol=0, atol=1e-12)
