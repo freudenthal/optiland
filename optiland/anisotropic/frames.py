@@ -67,6 +67,18 @@ def _unit(v: Array) -> Array:
     return v / safe[..., None]
 
 
+def _tangential(v: Array, n_hat: Array) -> Array:
+    """Return the part of the real vectors v tangential to the unit normals.
+
+    The projection is applied twice. Near normal incidence one projection
+    leaves a normal part of about 1E-16 |v| in a tangential part of length
+    |v_t|; the unit x̂ then has a normal part of 1E-16 |v| / |v_t|, and
+    K = k · x̂ collects it (1E-12 at |v_t| = 1E-4 |v|).
+    """
+    v_t = v - _dot(v, n_hat)[:, None] * n_hat
+    return v_t - _dot(v_t, n_hat)[:, None] * n_hat
+
+
 def interface_frame(
     normal: Any,
     k_in: Any,
@@ -96,7 +108,7 @@ def interface_frame(
     k = be.broadcast_to(k, (n_rays, 3))
 
     k_real = be.real(k)
-    k_t = k_real - _dot(k_real, n_hat)[:, None] * n_hat
+    k_t = _tangential(k_real, n_hat)
     k_t_norm = be.sqrt(_dot(k_t, k_t))
     k_norm = be.sqrt(be.real(_dot(k, be.real(k) - 1j * be.imag(k))))
     oblique = k_t_norm > NORMAL_INCIDENCE_RTOL * be.maximum(
@@ -110,7 +122,7 @@ def interface_frame(
         ref = be.where(near_x[:, None], y_axis, x_axis)
     else:
         ref = be.broadcast_to(_real_vectors(x_ref), (n_rays, 3))
-    ref_t = ref - _dot(ref, n_hat)[:, None] * n_hat
+    ref_t = _tangential(ref, n_hat)
 
     x_hat = be.where(oblique[:, None], _unit(k_t), _unit(ref_t))
     y_hat = be.cross(n_hat, x_hat)

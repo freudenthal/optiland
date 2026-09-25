@@ -422,6 +422,28 @@ def test_glan_taylor_case10(set_test_backend):
 # --------------------------------------------------------------------- consistency
 
 
+def test_near_normal_incidence_tangential_is_exact(set_test_backend):
+    """A normal 1E-4 rad from the incident direction: the transmitted wave
+    vector keeps the exact tangential part (the frame projection has no
+    cancellation error; one projection gave 1E-12)."""
+    n = 1.5
+    for alpha in (1e-3, 1e-4, 1e-5):
+        s, c = math.sin(alpha), math.cos(alpha)
+        normal = np.array([0.0, s, c])
+        # k_in = z: tangential part (0, -s c, s**2), exact without cancellation
+        k_t = np.array([0.0, -s * c, s * s])
+        expected = k_t + math.sqrt(n**2 - s**2) * normal
+        res = solve_interface(
+            be.array(normal),
+            _iso(1.0),
+            _iso(n),
+            be.array([0.0, 0.0, 1.0]),
+            be.array([1.0, 0.0, 0.0]),
+        )
+        k_out = _np(res.k)[0, 2]
+        assert _max_error(k_out, expected) < 1e-15
+
+
 def test_same_medium_transmits_unchanged(set_test_backend):
     """A = B (a rotated biaxial crystal): no reflection, the incident mode
     passes with amplitude 1 into the same mode."""
