@@ -226,8 +226,10 @@ class PolarizedRays(RealRays):
         s = be.cross(k0, k1)
         mag = be.linalg.norm(s, axis=1)
 
-        # handle case when mag = 0 (i.e., k0 parallel to k1)
-        mask = mag == 0
+        # handle the case k0 parallel to k1. Below sin(angle) = 1E-10 the cross
+        # product is rounding noise (a refraction between equal indices
+        # returns k1 = k0 to rounding), and its direction is not normal to k0.
+        mask = mag <= 1e-10
         if be.any(mask):
             x = be.broadcast_to(be.array([1.0, 0.0, 0.0]), k0[mask].shape)
             p_fallback = be.cross(k0[mask], x)
@@ -242,6 +244,10 @@ class PolarizedRays(RealRays):
             mag = be.linalg.norm(s, axis=1)
 
         s = s / be.unsqueeze_last(mag)
+        # make s exactly normal to k0 (the cross product of nearly parallel
+        # vectors carries a rounding error of 1E-16 / sin(angle) in direction)
+        s = s - be.unsqueeze_last(be.sum(s * k0, axis=1)) * k0
+        s = s / be.unsqueeze_last(be.linalg.norm(s, axis=1))
 
         # find p-component pre and post surface
         p0 = be.cross(k0, s)
