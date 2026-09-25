@@ -78,8 +78,9 @@ vector k beside the ray direction.
   mode into ``rays.flux_factor``. The ray power is ``|P E|**2`` times this
   factor.
 * ``rays.mode`` is the mode after the last anisotropic surface;
-  ``rays.branch_key`` lists ``(surface label, mode)`` for each anisotropic
-  surface.
+  ``rays.branch_key`` has one entry per anisotropic surface:
+  ``(label, "T")`` into an isotropic medium, ``(label, "T", mode)`` into an
+  anisotropic one (``"R"`` for a reflection, below).
 * The paraxial trace uses the index of the mode of each medium along the
   local z axis.
 
@@ -119,6 +120,36 @@ extinction coefficient.
    optic.surfaces[1].interaction_model.mode = "e"
    rays = optic.trace(Hx=0, Hy=0, wavelength=0.5893, num_rays=5)
    rays.x  # the e rays walk off by -0.218 mm (2 mm of calcite cut at 45°)
+
+Branch enumeration
+------------------
+
+One trace follows one mode per surface. :class:`~optiland.raytrace.branches.BranchTracer`
+traces every branch: each transmitted mode of each anisotropic surface and, for
+the surfaces in ``ghosts``, the reflected children as well (``"R"`` into an
+isotropic medium, or the two modes of a crystal). A reflection sends the
+branch back through the earlier surfaces (the views of
+:mod:`optiland.sequences`); an isotropic ghost surface is split with the
+bare-interface solver, so that R + T = 1. Branches below ``threshold`` times
+the launch power (default 1E-6) or past ``max_reflections`` are pruned, and
+their power is reported. The result maps each branch key to its rays and
+keeps a power ledger (kept, returned, pruned, unfollowed, evanescent,
+clipped, absorbed); for a lossless system the ledger adds to 1.
+
+.. code-block:: python
+
+   from optiland.raytrace.branches import BranchTracer
+
+   result = BranchTracer(optic, ghosts="all").trace_all(num_rays=5)
+   for key, branch in result.branches.items():
+       print(key, branch.power, branch.terminal)
+   result.ledger.as_dict()
+   # Coherent sum of branches that reach the image (a Savart fringe):
+   result.coherent_intensity(analyzer=(0.7071, 0.7071, 0.0))
+
+``BranchTracer.sequence(key)`` returns a
+:class:`~optiland.sequences.SequencedOptic` that traces one branch, for any
+analysis of that branch.
 
 .. autosummary::
    :toctree: anisotropic/

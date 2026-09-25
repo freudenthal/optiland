@@ -69,8 +69,11 @@ class AnisotropicRays(PolarizedRays):
         kz (be.ndarray): z-components of the wave vectors (complex).
         mode (str | None): The label of the mode that the rays follow after
             the last anisotropic surface (for example ``"e"``), or None.
-        branch_key (tuple): One entry ``(surface label, mode)`` for each
-            anisotropic surface that the rays passed, in trace order.
+        branch_key (tuple): One entry for each anisotropic surface that the
+            rays passed, in trace order: ``(label, "T")`` or ``(label, "R")``
+            into an isotropic medium, ``(label, "T", mode)`` or
+            ``(label, "R", mode)`` into an anisotropic medium
+            (``optiland.raytrace.branches``).
     """
 
     def __init__(
@@ -93,7 +96,7 @@ class AnisotropicRays(PolarizedRays):
         else:
             self.set_k(k)
         self.mode: str | None = None
-        self.branch_key: tuple[tuple[str, str], ...] = ()
+        self.branch_key: tuple[tuple[str, ...], ...] = ()
 
     @classmethod
     def from_rays(cls, rays: PolarizedRays) -> AnisotropicRays:

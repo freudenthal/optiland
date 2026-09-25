@@ -160,7 +160,7 @@ def test_calcite_displacer_case1(set_test_backend, indices, shift):
         path_air = 1.0 + 5.0  # before and after the plate
         assert abs(_np(o.opd)[0] - (path_air + n_o * d)) < 1e-12
         assert abs(_np(e.opd)[0] - (path_air + n_45 * d)) < 1e-12
-        assert e.branch_key == (("", "e"), ("", "T"))
+        assert e.branch_key == (("", "T", "e"), ("", "T"))
 
 
 def test_calcite_walkoff_inside_the_plate(set_test_backend):
@@ -330,7 +330,7 @@ def test_mode_labels_calcite(set_test_backend):
     rays = _rays()
     optic.surfaces.trace(rays, skip=1)
     assert _np(rays.x)[0] == x["slow"]
-    assert rays.branch_key == (("", "slow"), ("", "T"))
+    assert rays.branch_key == (("", "T", "slow"), ("", "T"))
 
 
 MODES_ONE = ("o", "e", "slow", "fast", "t1", "t2")
@@ -339,9 +339,9 @@ MODES_ONE = ("o", "e", "slow", "fast", "t1", "t2")
 def test_mode_errors(set_test_backend):
     axis = (0.0, 0.0, 1.0)
     optic = _crystal_optic([_calcite(axis)], [1.0])
-    with pytest.raises(ValueError, match="isotropic medium after"):
+    with pytest.raises(ValueError, match="isotropic exit medium"):
         _trace(optic, ["T", "T"], _rays())
-    with pytest.raises(ValueError, match="after the surface is isotropic"):
+    with pytest.raises(ValueError, match="exit medium is isotropic"):
         _trace(optic, ["o", "e"], _rays())
     with pytest.raises(ValueError, match="Unknown mode"):
         AnisotropicInteractionModel(parent_surface=None, mode="x")

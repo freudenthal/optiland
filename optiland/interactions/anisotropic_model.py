@@ -16,10 +16,13 @@ At the surface:
    nearest to the carried k (``plane_wave_modes``).
 2. The solver gives the children (r1, r2, t1, t2) with their wave vectors,
    ray directions, mode fields and PRT matrices (register E-11, E-14).
-3. The model selects the transmitted child of its mode. It sets the ray
-   direction to the child ray S / |S| (into an isotropic medium: the unit
-   Re k), sets k to the child wave vector, multiplies the child PRT matrix
-   into ``rays.p`` and the power factor into ``rays.flux_factor``.
+3. The model selects the child of its mode: a transmitted child, or a
+   reflected child when ``is_reflective`` is set (a reflecting step of a
+   ``SurfaceView``: the ghost and total-internal-reflection branches of
+   ``optiland.raytrace.branches``). It sets the ray direction to the child
+   ray S / |S| (into an isotropic medium: the unit Re k), sets k to the child
+   wave vector, multiplies the child PRT matrix into ``rays.p`` and the power
+   factor into ``rays.flux_factor``.
 
 Modes (the ``mode`` argument):
 
@@ -27,13 +30,17 @@ Modes (the ``mode`` argument):
   two transmitted children. Their PRT matrices recombine as
   P = P_t1 + P_t2 - k̂_out w₃ (w₃ the k̂ row of O_in⁻¹; Yun, Crabtree and
   Chipman 2011, Eq. (38)). The default into an isotropic medium.
-* ``"slow"``, ``"fast"``: the transmitted mode of the larger or the smaller
-  index Re √(k · k) (the outer or the inner sheet of the index surface).
-  ``"slow"`` is the default into an anisotropic medium.
+* ``"R"``: the reflected field into an isotropic medium A, the sum of the two
+  reflected children (the same recombination with the reflected k̂). The
+  default of a reflecting step in an isotropic medium.
+* ``"slow"``, ``"fast"``: the mode of the larger or the smaller index
+  Re √(k · k) (the outer or the inner sheet of the index surface) of the exit
+  medium (B, or A for a reflection). ``"slow"`` is the default into an
+  anisotropic medium.
 * ``"o"``, ``"e"``: the ordinary or the extraordinary mode of a
-  ``UniaxialMaterial`` (the ordinary mode has k · k = ε_o).
-* ``"t1"``, ``"t2"``: the s-like or the p-like transmitted child of the
-  solver. These labels depend on the plane of incidence of each ray; the
+  ``UniaxialMaterial`` exit medium (the ordinary mode has k · k = ε_o).
+* ``"t1"``, ``"t2"``: the s-like or the p-like child of the solver (r1, r2
+  for a reflection). These labels depend on the plane of incidence of each ray; the
   same label can be a different physical mode for two rays of a fan.
 
 The power factor of the surface is g_out / g_in, with g = |S · n̂| / |E|² of
@@ -79,9 +86,11 @@ if TYPE_CHECKING:
 Array = Any
 
 #: The mode labels of :class:`AnisotropicInteractionModel`.
-MODES = ("T", "slow", "fast", "o", "e", "t1", "t2")
+MODES = ("T", "R", "slow", "fast", "o", "e", "t1", "t2")
 
-_T1 = 2  # the index of the child t1 on the child axis of the solver
+_R1 = 0  # the indices of the children r1, r2, t1, t2 on the child axis
+_R2 = 1
+_T1 = 2
 _T2 = 3
 
 
@@ -150,14 +159,17 @@ class AnisotropicInteractionModel(BaseInteractionModel):  # type: ignore[no-unty
 
     Args:
         parent_surface: The surface of the model.
-        is_reflective: Must be False (a reflective anisotropic surface is not
-            supported yet).
+        is_reflective: Must be False at construction (a mirror next to a
+            tensor material is not supported). A reflecting ``SurfaceView``
+            sets it on its own copy of the model; the model then follows a
+            reflected child and takes both media from the view's
+            ``interface_materials``.
         coating: Must be None. The interface solver gives the bare-interface
             physics; coatings on anisotropic surfaces are not supported.
         bsdf: Must be None.
         mode: The mode that the rays follow after the surface (``MODES``).
-            None selects ``"T"`` into an isotropic medium and ``"slow"`` into
-            an anisotropic medium.
+            None selects ``"T"`` (``"R"`` for a reflection) into an isotropic
+            medium and ``"slow"`` into an anisotropic medium.
         label: The surface label in the branch key of the rays. None uses the
             surface comment.
     """
@@ -201,25 +213,50 @@ class AnisotropicInteractionModel(BaseInteractionModel):  # type: ignore[no-unty
         surface = self.parent_surface
         return getattr(surface, "comment", "") if surface is not None else ""
 
-    def _resolve_mode(self, isotropic_b: bool) -> str:
-        """Return the mode of the surface and check it against medium B."""
+    def _interface_media(self) -> tuple[Any, Any]:
+        """Return the media (A, B) on the incident and the far side.
+
+        A ``SurfaceView`` gives them by ``interface_materials`` (for a
+        reflecting view, ``material_post`` is the incident medium).
+        """
+        media = getattr(self.parent_surface, "interface_materials", None)
+        if media is not None:
+            return media[0], media[1]
+        if self.is_reflective:
+            raise NotImplementedError(
+                "A reflective surface next to a tensor material is supported "
+                "only as a reflecting SurfaceView (branch tracing)."
+            )
+        return self.material_pre, self.material_post
+
+    def _resolve_mode(self, isotropic_exit: bool, exit_material: Any) -> str:
+        """Return the mode of the surface and check it against the exit medium.
+
+        The exit medium is B for a transmission and A for a reflection.
+        """
+        summed = "R" if self.is_reflective else "T"
         mode = self.mode
         if mode is None:
-            return "T" if isotropic_b else "slow"
-        if mode == "T" and not isotropic_b:
+            return summed if isotropic_exit else "slow"
+        if mode in ("T", "R") and mode != summed:
+            step = "reflecting" if self.is_reflective else "transmitting"
             raise ValueError(
-                "Mode 'T' needs an isotropic medium after the surface: the "
-                "transmitted modes of an anisotropic medium have different "
-                "directions. Select one of them."
+                f"Mode {mode!r} does not fit a {step} step; use {summed!r}."
             )
-        if mode != "T" and isotropic_b:
+        if mode == summed and not isotropic_exit:
             raise ValueError(
-                f"Mode {mode!r} selects one transmitted mode, but the medium "
-                "after the surface is isotropic. Use mode 'T'."
+                f"Mode {mode!r} needs an isotropic exit medium: the two modes "
+                "of an anisotropic medium have different directions. Select "
+                "one of them."
             )
-        if mode in ("o", "e") and not isinstance(self.material_post, UniaxialMaterial):
+        if mode != summed and isotropic_exit:
             raise ValueError(
-                f"Mode {mode!r} needs a UniaxialMaterial after the surface; "
+                f"Mode {mode!r} selects one mode, but the exit medium is "
+                f"isotropic. Use mode {summed!r}."
+            )
+        if mode in ("o", "e") and not isinstance(exit_material, UniaxialMaterial):
+            raise ValueError(
+                f"Mode {mode!r} needs a UniaxialMaterial exit medium; "
                 "use 'slow' or 'fast'."
             )
         return mode
@@ -267,11 +304,12 @@ class AnisotropicInteractionModel(BaseInteractionModel):  # type: ignore[no-unty
         self.geometry.localize(probe)
         return be.stack([probe.L, probe.M, probe.N], axis=0)
 
+    @staticmethod
     def _incident(
-        self, rays: AnisotropicRays, d: Array, normal: Array, m_a: Array
+        rays: AnisotropicRays, d: Array, normal: Array, m_a: Array, material_a: Any
     ) -> tuple[Array, Array, Array | None]:
         """Return the incident k, E and flux density g_in (None: isotropic A)."""
-        if not isinstance(self.material_pre, BaseTensorMaterial):
+        if not isinstance(material_a, BaseTensorMaterial):
             n_c = be.sqrt(m_a[:, 0, 0])
             k_in = n_c[:, None] * be.to_complex(d)
             return k_in, be.to_complex(_transverse(d)), None
@@ -290,7 +328,7 @@ class AnisotropicInteractionModel(BaseInteractionModel):  # type: ignore[no-unty
     # -- real rays --------------------------------------------------------------
 
     def interact_real_rays(self, rays: RealRays) -> RealRays:
-        """Refract the rays into the mode of the surface.
+        """Refract (or, for a reflecting view, reflect) the rays into the mode.
 
         Args:
             rays (RealRays): The incoming rays; they must be
@@ -333,30 +371,37 @@ class AnisotropicInteractionModel(BaseInteractionModel):  # type: ignore[no-unty
         # the global frame.
         w = be.atleast_1d(rays.w) + be.zeros((n_rays,))
         rotation = self._local_rotation()[None]
-        m_a = rotate_constitutive(constitutive_matrix(self.material_pre, w), rotation)
-        m_b = rotate_constitutive(constitutive_matrix(self.material_post, w), rotation)
-        k_in, e_in, g_in = self._incident(rays, d, normal, m_a)
+        material_a, material_b = self._interface_media()
+        m_a = rotate_constitutive(constitutive_matrix(material_a, w), rotation)
+        m_b = rotate_constitutive(constitutive_matrix(material_b, w), rotation)
+        k_in, e_in, g_in = self._incident(rays, d, normal, m_a, material_a)
         result = solve_interface(normal, m_a, m_b, k_in, e_in)
 
-        isotropic_b = result.modes_b.isotropic
-        mode = self._resolve_mode(bool(be.all(isotropic_b)))
+        reflect = bool(self.is_reflective)
+        exit_modes = result.modes_a if reflect else result.modes_b
+        exit_material = material_a if reflect else material_b
+        isotropic_exit = exit_modes.isotropic
+        mode = self._resolve_mode(bool(be.all(isotropic_exit)), exit_material)
         if g_in is None:  # isotropic A: the s-like forward mode of A
             g_in = be.abs(be.real(result.modes_a.S[:, 0, 2])) / _norm2(
                 result.modes_a.E[:, 0, :]
             )
 
-        k_t1, k_t2 = result.k[:, _T1, :], result.k[:, _T2, :]
-        if mode == "T":
+        c1, c2 = (_R1, _R2) if reflect else (_T1, _T2)
+        k_c1, k_c2 = result.k[:, c1, :], result.k[:, c2, :]
+        summed = mode in ("T", "R")
+        if summed:
             second = be.zeros((n_rays,)) > 1.0
         else:
-            second = self._select(mode, k_t1, k_t2, self.material_post, w)
-        k_out = _pick(second, k_t1, k_t2)
-        prt = _pick(second, result.prt[:, _T1], result.prt[:, _T2])
-        e_mode = _pick(second, result.E_mode[:, _T1], result.E_mode[:, _T2])
-        h_mode = _pick(second, result.H_mode[:, _T1], result.H_mode[:, _T2])
-        ray = _pick(second, result.ray[:, _T1], result.ray[:, _T2])
-        if mode == "T":
-            # The two transmitted children exit together (Yun I, Eq. (38)).
+            second = self._select(mode, k_c1, k_c2, exit_material, w)
+        k_out = _pick(second, k_c1, k_c2)
+        prt = _pick(second, result.prt[:, c1], result.prt[:, c2])
+        e_mode = _pick(second, result.E_mode[:, c1], result.E_mode[:, c2])
+        h_mode = _pick(second, result.H_mode[:, c1], result.H_mode[:, c2])
+        ray = _pick(second, result.ray[:, c1], result.ray[:, c2])
+        if summed:
+            # The two children of an isotropic exit medium leave together
+            # (Yun I, Eq. (38)).
             e_forward = to_global(result.modes_a.E[:, :2, :], result.rotation)
             k_hat_in = be.to_complex(_unit(be.real(k_in)))
             o_in = be.concatenate(
@@ -364,16 +409,16 @@ class AnisotropicInteractionModel(BaseInteractionModel):  # type: ignore[no-unty
             )
             w3 = be.linalg.inv(o_in)[:, 2, :]
             k_hat_out = be.to_complex(_unit(be.real(k_out)))
-            prt = result.prt[:, _T1] + result.prt[:, _T2] - _outer(k_hat_out, w3)
+            prt = result.prt[:, c1] + result.prt[:, c2] - _outer(k_hat_out, w3)
         # Into an isotropic medium the ray is along Re k.
-        ray = be.where(isotropic_b[:, None], _unit(be.real(k_out)), ray)
+        ray = be.where(isotropic_exit[:, None], _unit(be.real(k_out)), ray)
         g_out = _flux_density(e_mode, h_mode, normal)
 
         # A child that decays faster along n̂ than it propagates is not a ray
         # (total internal reflection; with a small loss in A the child carries
         # a small power at grazing exit). Such rays are lost (NaN), as in
         # ``RealRays.refract``.
-        evanescent = _pick(second, result.evanescent[:, _T1], result.evanescent[:, _T2])
+        evanescent = _pick(second, result.evanescent[:, c1], result.evanescent[:, c2])
         q_out = _dot(k_out, be.to_complex(normal))
         lost = evanescent | (be.abs(be.imag(q_out)) >= be.abs(be.real(q_out)))
         nan = be.zeros_like(ray) + float("nan")
@@ -397,8 +442,20 @@ class AnisotropicInteractionModel(BaseInteractionModel):  # type: ignore[no-unty
             *_, o_in_q, o_out_q = PolarizedRays.get_local_basis(k0, k1)
             rays.q = be.matmul(be.matmul(o_out_q, o_in_q), rays.q)
         rays.mode = mode
-        rays.branch_key = (*rays.branch_key, (self._branch_label(), mode))
+        rays.branch_key = (*rays.branch_key, self._key_entry(mode))
         return rays
+
+    def _key_entry(self, mode: str) -> tuple[str, ...]:
+        """Return the branch-key entry of this step for a resolved mode.
+
+        ``(label, "T")`` or ``(label, "R")`` into an isotropic exit medium;
+        ``(label, "T", mode)`` or ``(label, "R", mode)`` into an anisotropic
+        one.
+        """
+        side = "R" if self.is_reflective else "T"
+        if mode in ("T", "R"):
+            return (self._branch_label(), side)
+        return (self._branch_label(), side, mode)
 
     # -- paraxial rays ------------------------------------------------------------
 
