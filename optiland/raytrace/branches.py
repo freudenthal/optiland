@@ -25,6 +25,23 @@ The splitting surfaces are:
   prism): one branch per reflected eigenmode of the incident medium. A fold
   keeps the listed order of the surfaces, as any Optiland mirror does.
 
+* every surface whose interaction model implements the splitting protocol
+  (:class:`SplittingModel`), for example a grating
+  (``DiffractiveInteractionModel``): one branch per child that the model
+  lists, for a grating one per listed diffraction order (``orders`` selects
+  them per surface). An evanescent order is booked as ``evanescent``.
+
+**Splitting protocol.** A model lists the children of a step with
+``branch_children(view, select)`` (a list of :class:`BranchChild`: the side
+``"T"``, ``"F"`` or ``"R"``, the rest of the key entry, whether the branch is
+followed) and traces one of them on its own copy in a view after
+``configure_branch(child, label)``, appending the key entry
+``(label, side, *entry)`` to ``rays.branch_key``. A ``"T"`` or ``"F"`` child
+keeps the listed order of the surfaces; an ``"R"`` child reverses it (the
+view is traced as a reflection). The power of a child is the ray power after
+the step (``ray_power``): a model that splits power (a grating efficiency)
+scales the flux factor, not ``rays.i`` (0 there marks a clipped ray).
+
 A reflection at a refracting surface reverses the direction of travel: the
 branch then passes the earlier surfaces backwards
 (``optiland.sequences.SurfaceView``). A branch ends
@@ -37,22 +54,28 @@ launch power, or when it would take more than ``max_reflections`` reflections
 ``(label, "T")`` or ``(label, "R")`` when the child leaves into an isotropic
 medium, ``(label, "T", mode)`` or ``(label, "R", mode)`` when it leaves into
 an anisotropic medium; ``"F"`` in place of ``"R"`` for a fold (a reflection
-that keeps the direction of the listing). The label is the model ``label``,
-else the surface comment, else ``"s<index>"``. The key alone gives the path of
-the branch.
+that keeps the direction of the listing). A diffraction order is
+``(label, "T", "m<±k>")`` through a transmission grating and
+``(label, "F", "m<±k>")`` at a reflective grating (``m0``, ``m+1``, ``m-2``;
+the order sign of ``RealRays.gratingdiffract``). The label is the model
+``label``, else the surface comment, else ``"s<index>"``. The key alone gives
+the path of the branch.
 
 **Power ledger.** Each step of each branch adds its parent power to exactly
 one of: the children that the enumeration follows (``kept`` or ``returned`` at
 the end of their branch, ``pruned`` if dropped), ``unfollowed`` (the reflected
-children of an anisotropic surface that is not in ``ghosts``), ``escaped``
+children of an anisotropic surface that is not in ``ghosts``, and the children
+that a splitting model marks as not followed), ``escaped``
 (the transmitted children of a fold face: the power that leaves the listed
 path through a bare fold face below the critical angle), ``evanescent``
-(rays that a surface loses: an evanescent child, or a total internal
-reflection that is not followed), ``clipped`` (aperture) and ``absorbed`` (the
-rest of the step: bulk absorption, the absorption of a metal fold, and the
-reflection of a coated surface that is not split). For a lossless system
-traced with every split followed, ``absorbed`` is 0 to rounding and the fields
-sum to the launch power.
+(rays that a surface loses: an evanescent child or diffraction order, or a
+total internal reflection that is not followed), ``clipped`` (aperture) and
+``absorbed`` (the rest of the step: bulk absorption, the absorption of a metal
+fold, the reflection of a coated surface that is not split, and the power of
+the orders of a grating that are not listed). For a lossless system traced
+with every split followed, ``absorbed`` is 0 to rounding and the fields sum to
+the launch power. A grating without an efficiency gives every order the power
+of its parent (as a sequential trace does): its ledger does not close.
 
 **Detector sums.** Branches that reach the image surface share the launch
 ray grid (ray j of each branch comes from launch ray j). The incoherent sum
@@ -76,7 +99,7 @@ from __future__ import annotations
 import copy
 import math
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import optiland.backend as be
 from optiland.coatings import FresnelCoating
@@ -89,6 +112,8 @@ from optiland.sequences.sequenced_surface_group import SequencedSurfaceGroup
 from optiland.sequences.surface_view import SurfaceView, resolve_view_materials
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
     from optiland.optic.optic import Optic
     from optiland.rays import PolarizationState
     from optiland.rays.polarized_rays import PolarizedRays
@@ -111,6 +136,61 @@ LEDGER_FIELDS = (
 )
 
 
+@dataclass(frozen=True)
+class BranchChild:
+    """One child that a splitting model offers at a branch step.
+
+    Attributes:
+        side: ``"T"`` (a transmitted child: the branch keeps the listed order
+            of the surfaces), ``"F"`` (a reflection at a surface listed as a
+            mirror: the listed order is kept too) or ``"R"`` (a reflection
+            that reverses the listed order; the step is traced as a
+            reflection).
+        entry: The key entry after the side, for example ``("m+1",)``; the
+            key entry of the child is ``(label, side, *entry)``.
+        followed: False books the power of the child as ``unfollowed``.
+    """
+
+    side: str
+    entry: tuple[str, ...] = ()
+    followed: bool = True
+
+    def __post_init__(self) -> None:
+        if self.side not in ("T", "F", "R"):
+            raise ValueError(f"side must be 'T', 'F' or 'R', not {self.side!r}.")
+
+
+@runtime_checkable
+class SplittingModel(Protocol):
+    """The splitting protocol of an interaction model (see the module text).
+
+    ``BranchTracer`` calls :meth:`branch_children` on the model of a view of
+    the step and :meth:`configure_branch` on the copy of the model that the
+    view of one branch owns.
+    """
+
+    def branch_children(self, view: Any, select: Any = None) -> list[BranchChild]:
+        """Return the children of a step in branch order.
+
+        Args:
+            view: The ``SurfaceView`` of the step (direction and media).
+            select: The tracer's selection for this surface (``orders`` of
+                ``BranchTracer``), None for the model's own list.
+        """
+        ...  # pragma: no cover
+
+    def configure_branch(self, child: BranchChild, label: str) -> None:
+        """Trace ``child``; append ``(label, side, *entry)`` to ``rays.branch_key``."""
+        ...  # pragma: no cover
+
+
+def _splitting_model(model: Any) -> bool:
+    """True for a model of the splitting protocol (not the anisotropic one)."""
+    return isinstance(model, SplittingModel) and not isinstance(
+        model, AnisotropicInteractionModel
+    )
+
+
 @dataclass
 class PowerLedger:
     """Where the launch power went, as fractions of the launch power.
@@ -126,8 +206,9 @@ class PowerLedger:
             that are not in ``ghosts``.
         escaped: Power of the transmitted children of fold faces (the rays
             that leave the listed path through a bare fold face).
-        evanescent: Power of rays that a surface loses (an evanescent child;
-            a total internal reflection that the enumeration does not follow).
+        evanescent: Power of rays that a surface loses (an evanescent child
+            or diffraction order; a total internal reflection that the
+            enumeration does not follow).
         clipped: Power of rays clipped by an aperture.
         absorbed: The rest: bulk absorption, the absorption of a metal fold,
             and the reflection of coated surfaces that are not split.
@@ -393,7 +474,7 @@ class _Choice:
     ``side`` is the key letter: ``"T"``, ``"R"`` (a reflection that reverses
     the direction) or ``"F"`` (a fold reflection, the direction kept).
     ``escape`` marks the transmitted child of a fold (not followed; the
-    ``escaped`` ledger field).
+    ``escaped`` ledger field). ``child`` is the child of a splitting model.
     """
 
     reflect: bool
@@ -402,6 +483,7 @@ class _Choice:
     followed: bool
     side: str = "T"
     escape: bool = False
+    child: BranchChild | None = None
 
     @property
     def turns(self) -> bool:
@@ -450,11 +532,16 @@ class BranchTracer:
         max_reflections: A branch is dropped before it takes reflection
             ``max_reflections + 1`` (2 is enough for the first-order ghosts
             that reach the image).
+        orders: ``{surface index: selection}`` for surfaces with a splitting
+            model: for a grating the diffraction orders to trace, for example
+            ``{3: (-1, 0, 1)}``. A surface not in it uses the model's own
+            list (``DiffractiveInteractionModel.orders``).
 
     Raises:
-        ValueError: If the optic has no polarization state, or if a ghost
+        ValueError: If the optic has no polarization state, if a ghost
             surface is a mirror, carries a BSDF or a coating other than
-            ``FresnelCoating``.
+            ``FresnelCoating``, or has a splitting model, or if a surface of
+            ``orders`` has no splitting model.
     """
 
     def __init__(
@@ -463,6 +550,7 @@ class BranchTracer:
         ghosts: Any = None,
         threshold: float = 1e-6,
         max_reflections: int = 2,
+        orders: Mapping[int, Sequence[int]] | None = None,
     ):
         if optic.polarization == "ignore":
             raise ValueError("Branch tracing needs a polarization state of the optic.")
@@ -488,6 +576,11 @@ class BranchTracer:
             model = surfaces[index].interaction_model
             if isinstance(model, AnisotropicInteractionModel):
                 continue
+            if _splitting_model(model):
+                raise ValueError(
+                    f"Ghost surface {index} has a splitting model; it lists "
+                    "its own children."
+                )
             if getattr(model, "is_reflective", False):
                 raise ValueError(f"Ghost surface {index} is a mirror.")
             if getattr(model, "bsdf", None) is not None:
@@ -499,6 +592,13 @@ class BranchTracer:
                     "(Fresnel) interface can be split into R and T."
                 )
         self.ghosts = ghost_set
+        self.orders: dict[int, tuple[int, ...]] = {}
+        for index, selection in (orders or {}).items():
+            if not 0 < int(index) < self._last or not _splitting_model(
+                surfaces[int(index)].interaction_model
+            ):
+                raise ValueError(f"Surface {index} has no splitting model.")
+            self.orders[int(index)] = tuple(int(m) for m in selection)
 
     # -- structure -------------------------------------------------------------
 
@@ -508,7 +608,11 @@ class BranchTracer:
     def is_splitting(self, index: int) -> bool:
         """Return True if the surface adds entries to the branch key."""
         model = self._base(index).interaction_model
-        return index in self.ghosts or isinstance(model, AnisotropicInteractionModel)
+        return (
+            index in self.ghosts
+            or isinstance(model, AnisotropicInteractionModel)
+            or _splitting_model(model)
+        )
 
     def is_fold(self, index: int) -> bool:
         """Return True if the surface is a fold (a mirror with the model)."""
@@ -527,6 +631,8 @@ class BranchTracer:
     def _choices(self, index: int, reverse: bool) -> list[_Choice]:
         """Return the children of a splitting step, in branch order."""
         base = self._base(index)
+        if _splitting_model(base.interaction_model):
+            return self._protocol_choices(index, reverse)
         pre, post = resolve_view_materials(base, reverse, None)
         if self.is_fold(index):
             return self._fold_choices(base.interaction_model.far_medium(), pre)
@@ -546,6 +652,23 @@ class BranchTracer:
         for choice in choices:
             choice.side = "R" if choice.reflect else "T"
         return choices
+
+    def _protocol_choices(self, index: int, reverse: bool) -> list[_Choice]:
+        """Return the children of a surface with a splitting model."""
+        view = SurfaceView(self._base(index), reverse)
+        model: Any = view.interaction_model
+        children = model.branch_children(view, self.orders.get(index))
+        return [
+            _Choice(
+                c.side != "T",
+                c.entry[0] if c.entry else c.side,
+                False,
+                c.followed,
+                c.side,
+                child=c,
+            )
+            for c in children
+        ]
 
     @staticmethod
     def _fold_choices(far: Any, incident: Any) -> list[_Choice]:
@@ -582,6 +705,9 @@ class BranchTracer:
     def _configure(self, view: SurfaceView, index: int, choice: _Choice) -> None:
         """Give a view of a splitting surface the model of a choice."""
         model: Any = view.interaction_model
+        if choice.child is not None:
+            model.configure_branch(choice.child, self.label(index))
+            return
         if not isinstance(model, AnisotropicInteractionModel):
             # A ghost surface between isotropic media: the bare interface.
             surface: Any = view  # a SurfaceView stands in for the Surface
@@ -685,6 +811,8 @@ class BranchTracer:
                 view = self._view(index, node.reverse, choice, node.views[-1])
                 child, power, lost = self._trace_child(node, view, index, choice)
                 ledger.evanescent += lost
+                if choice.child is not None and power == 0.0 and lost > 0.0:
+                    continue  # an evanescent order: booked, not a branch
                 if choice.escape:
                     ledger.escaped += power
                     continue
@@ -717,12 +845,21 @@ class BranchTracer:
     # -- one step ------------------------------------------------------------------
 
     def _advance(
-        self, node: _Node, view: SurfaceView, index: int, reverse: bool
+        self,
+        node: _Node,
+        view: SurfaceView,
+        index: int,
+        reverse: bool,
+        scaled_loss: bool = False,
     ) -> tuple[_Node, Array, Array, Array]:
         """Trace a copy of the node's rays through a view.
 
         Returns the child node, and per-ray: the power that stays alive, the
         power of rays that the step loses, the parent power of clipped rays.
+        With ``scaled_loss`` a lost ray (an evanescent diffraction order,
+        whose PRT is not finite) carries the parent power times the change of
+        the scalar factors ``i`` × flux factor over the step (the order
+        efficiency and the bulk transmission before the surface).
         """
         rays = _copy_rays(node.rays)
         _trace(view, rays)
@@ -732,7 +869,13 @@ class BranchTracer:
         lost = node.alive & ~finite & ~clipped
         alive = node.alive & finite & ~clipped
         kept = be.where(alive, power, 0.0)
-        lost_power = be.where(lost & be.isfinite(power), power, 0.0)
+        if scaled_loss:
+            before = node.rays.i * node.rays.flux_factor
+            after = rays.i * rays.flux_factor
+            ratio = after / be.where(before > 0, before, 1.0)
+            lost_power = be.where(lost & be.isfinite(ratio), node.power * ratio, 0.0)
+        else:
+            lost_power = be.where(lost & be.isfinite(power), power, 0.0)
         clipped_power = be.where(clipped, node.power, 0.0)
         steps = [
             *node.steps,
@@ -778,7 +921,9 @@ class BranchTracer:
         ``evanescent``.
         """
         reverse = node.reverse != choice.turns
-        child, kept, lost, clipped = self._advance(node, view, index, reverse)
+        child, kept, lost, clipped = self._advance(
+            node, view, index, reverse, scaled_loss=choice.child is not None
+        )
         child.reflections = node.reflections + (1 if choice.turns else 0)
         power = _to_float(be.sum(kept))
         lost_sum = 0.0 if choice.escape else _to_float(be.sum(lost))
@@ -874,6 +1019,10 @@ class BranchTracer:
         side = entry[1]
         mode = entry[2] if len(entry) > 2 else ("T" if side == "T" else "R")
         for choice in self._choices(index, reverse):
+            if choice.child is not None:
+                if choice.side == side and choice.child.entry == tuple(entry[2:]):
+                    return choice
+                continue
             if choice.side == side and choice.mode == mode and not choice.escape:
                 return choice
         raise ValueError(f"Key entry {entry!r} is not a child of surface {index}.")
