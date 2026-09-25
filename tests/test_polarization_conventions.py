@@ -403,3 +403,34 @@ class TestMirrorCoating:
         coating = lens.surfaces[1].interaction_model.coating
         assert coating.follows_surface
         assert coating.material_post.index == 1.7
+
+
+class TestRayAimingWithCoatings:
+    """The ray aimers trace real rays through polarized coatings."""
+
+    @pytest.mark.parametrize("mode", ["iterative", "robust"])
+    def test_aimed_trace_with_fresnel_coatings(self, set_test_backend, mode):
+        lens = optic.Optic()
+        lens.surfaces.add(index=0, radius=np.inf, thickness=np.inf)
+        lens.surfaces.add(
+            index=1,
+            radius=np.inf,
+            thickness=2.0,
+            material=IdealMaterial(1.5),
+            is_stop=True,
+            coating="fresnel",
+        )
+        lens.surfaces.add(index=2, thickness=5.0, coating="fresnel")
+        lens.surfaces.add(index=3)
+        lens.set_aperture(aperture_type="EPD", value=2.0)
+        lens.fields.set_type(field_type="angle")
+        lens.fields.add(y=0.0)
+        lens.fields.add(y=10.0)
+        lens.wavelengths.add(value=WL, is_primary=True)
+        lens.updater.set_polarization(create_polarization("H"))
+        lens.ray_tracer.set_aiming(mode)
+
+        rays = lens.trace(Hx=0, Hy=0, wavelength=WL, num_rays=1, distribution="line_y")
+
+        # Normal incidence on two faces of n = 1.5: T = (1 - 0.04)**2.
+        assert_allclose(rays.i, (1 - 0.04) ** 2, rtol=0, atol=1e-12)
