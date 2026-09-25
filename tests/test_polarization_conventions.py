@@ -434,3 +434,75 @@ class TestRayAimingWithCoatings:
 
         # Normal incidence on two faces of n = 1.5: T = (1 - 0.04)**2.
         assert_allclose(rays.i, (1 - 0.04) ** 2, rtol=0, atol=1e-12)
+
+
+class TestTiltedSurfaces:
+    """D-11: the PRT turns with the rays into and out of the local frame of a
+    tilted surface, so P k_in = k_out and the powers are the Fresnel values."""
+
+    @staticmethod
+    def _plate(tilts: dict, state) -> optic.Optic:
+        lens = optic.Optic()
+        lens.surfaces.add(index=0, radius=np.inf, thickness=np.inf)
+        lens.surfaces.add(
+            index=1,
+            thickness=2.0,
+            material=IdealMaterial(1.5),
+            is_stop=True,
+            coating="fresnel",
+            **tilts,
+        )
+        lens.surfaces.add(index=2, thickness=5.0, coating="fresnel", **tilts)
+        lens.surfaces.add(index=3)
+        lens.set_aperture(aperture_type="EPD", value=2.0)
+        lens.fields.set_type(field_type="angle")
+        lens.fields.add(y=0.0)
+        lens.wavelengths.add(value=WL, is_primary=True)
+        lens.updater.set_polarization(state)
+        return lens
+
+    @pytest.mark.parametrize(
+        "tilts, p_state",
+        [
+            ({"ry": np.deg2rad(20.0)}, "H"),  # plane of incidence x-z: x is p
+            ({"rx": np.deg2rad(20.0)}, "V"),  # plane of incidence y-z: y is p
+        ],
+    )
+    def test_tilted_plate_powers(self, set_test_backend, tilts, p_state):
+        """A plate tilted by 20 deg: the p and the s power are (1 - R)^2 of the
+        Fresnel reflectances of n = 1.5 at 20 deg; P maps z to z."""
+        theta = np.deg2rad(20.0)
+        rs, rp, _, _, _ = _fresnel(1.5, theta)
+        s_state = "V" if p_state == "H" else "H"
+        for state, r in ((p_state, rp), (s_state, rs)):
+            lens = self._plate(tilts, create_polarization(state))
+            rays = lens.trace(
+                Hx=0, Hy=0, wavelength=WL, num_rays=1, distribution="line_y"
+            )
+            assert_allclose(rays.i, (1 - abs(r) ** 2) ** 2, rtol=0, atol=1e-12)
+            k_out = be.matmul(rays.p, be.to_complex(be.array([0.0, 0.0, 1.0])))
+            assert_allclose(be.real(k_out[0]), [0.0, 0.0, 1.0], rtol=0, atol=1e-12)
+            assert_allclose(be.imag(k_out[0]), [0.0, 0.0, 0.0], rtol=0, atol=1e-12)
+
+    def test_compound_tilt(self, set_test_backend):
+        """A plate tilted about x, y and z: P k_in = k_out, and the powers of
+        two orthogonal inputs add to (1 - R_s)^2 + (1 - R_p)^2 at the angle
+        between z and the plate normal R_z R_y R_x z."""
+        rx, ry, rz = np.deg2rad([10.0, 15.0, 30.0])
+        cx, sx, cy, sy = np.cos(rx), np.sin(rx), np.cos(ry), np.sin(ry)
+        normal_z = cx * cy  # the z component of R_z R_y R_x z
+        theta = np.arccos(normal_z)
+        rs, rp, _, _, _ = _fresnel(1.5, theta)
+        total = 0.0
+        for state in ("H", "V"):
+            tilts = {"rx": rx, "ry": ry, "rz": rz}
+            lens = self._plate(tilts, create_polarization(state))
+            rays = lens.trace(
+                Hx=0, Hy=0, wavelength=WL, num_rays=1, distribution="line_y"
+            )
+            total = total + rays.i
+            k_out = be.matmul(rays.p, be.to_complex(be.array([0.0, 0.0, 1.0])))
+            assert_allclose(be.real(k_out[0]), [0.0, 0.0, 1.0], rtol=0, atol=1e-12)
+        expected = (1 - abs(rs) ** 2) ** 2 + (1 - abs(rp) ** 2) ** 2
+        assert_allclose(total, expected, rtol=0, atol=1e-12)
+        assert abs(sx * cy) > 0.1 and abs(sy) > 0.1  # a compound tilt

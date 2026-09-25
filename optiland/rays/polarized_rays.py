@@ -58,6 +58,67 @@ class PolarizedRays(RealRays):
         self._M0 = be.copy(M)
         self._N0 = be.copy(N)
 
+    def _rotate_matrices(self, rotation: be.ndarray) -> None:
+        """Express the PRT matrices in a rotated frame: P <- R P.
+
+        The PRT matrix maps the launch field (global frame) to the current
+        field. The coordinate system of a surface rotates the rays into its
+        local frame before the interaction (whose matrix is local) and back
+        after it, so the output side of P must turn with the rays. The
+        geometrical transformation ``q`` (if the rays carry it) turns alike.
+
+        Args:
+            rotation: The rotation matrix R, shape (3, 3).
+        """
+        r = be.to_complex(rotation)
+        self.p = be.matmul(r, be.to_complex(self.p))
+        if hasattr(self, "q"):
+            self.q = be.matmul(r, be.to_complex(self.q))
+
+    @staticmethod
+    def _rotation(axis: int, angle) -> be.ndarray:
+        """Return the matrix of a rotation by ``angle`` about a coordinate axis.
+
+        The same rotation as ``RealRays.rotate_x/y/z`` applies to (L, M, N).
+        """
+        angle = be.array(angle)
+        c, s = be.cos(angle), be.sin(angle)
+        one, zero = be.ones_like(c), be.zeros_like(c)
+        if axis == 0:
+            rows = [[one, zero, zero], [zero, c, -s], [zero, s, c]]
+        elif axis == 1:
+            rows = [[c, zero, s], [zero, one, zero], [-s, zero, c]]
+        else:
+            rows = [[c, -s, zero], [s, c, zero], [zero, zero, one]]
+        return be.stack([be.stack(row) for row in rows])
+
+    def rotate_x(self, rx):
+        """Rotate the rays and their PRT matrices about the x-axis.
+
+        Args:
+            rx: Rotation angle around x-axis in radians.
+        """
+        super().rotate_x(rx)
+        self._rotate_matrices(self._rotation(0, rx))
+
+    def rotate_y(self, ry):
+        """Rotate the rays and their PRT matrices about the y-axis.
+
+        Args:
+            ry: Rotation angle around y-axis in radians.
+        """
+        super().rotate_y(ry)
+        self._rotate_matrices(self._rotation(1, ry))
+
+    def rotate_z(self, rz):
+        """Rotate the rays and their PRT matrices about the z-axis.
+
+        Args:
+            rz: Rotation angle around z-axis in radians.
+        """
+        super().rotate_z(rz)
+        self._rotate_matrices(self._rotation(2, rz))
+
     def get_output_field(self, E: be.ndarray) -> be.ndarray:
         """Compute the output electric field given the input electric field.
 
