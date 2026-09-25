@@ -156,6 +156,15 @@ the Post constraint tr(μ⁻¹(ξ + ζ)).
   ``from_gyration`` takes a gyration tensor γ and uses α = (tr γ/2) I - γᵀ and
   ε = ε_L + ααᵀ. ``quartz_alpha`` and ``kappa_from_rotatory_power`` (vacuum
   wavelength) give the quartz values.
+* :class:`~optiland.materials.anisotropic.QuartzMaterial`: α-quartz with its
+  optical activity, right or left hand: the Ghosh (1999) n_o and n_e and the
+  rotatory power ``quartz_rotatory_power`` (Lowry and Coode-Adams 1927,
+  formula (vi), 20 °C, ±0.002 °/mm in the visible). The wavelength is the
+  vacuum wavelength; the formula takes the wavelength in air, which
+  ``standard_air_index`` (Ciddor 1996, standard air) gives. Along the optic
+  axis a 1 mm plate of right quartz turns a linear polarization by
+  21.72 ° at 589.3 nm, clockwise as seen by an observer who looks toward the
+  source.
 
 .. code-block:: python
 
@@ -167,6 +176,11 @@ the Post constraint tr(μ⁻¹(ξ + ζ)).
        optic_axis=(0.0, 0.0, 1.0),
    )
    eps = calcite.epsilon(0.5893)  # (1, 3, 3) complex
+
+   from optiland.materials import QuartzMaterial, euler_zxz_matrix
+
+   quartz = QuartzMaterial(hand="right", rotation=euler_zxz_matrix(0, 30, 0))
+   p = quartz.constitutive_6x6(0.5893)  # (1, 6, 6): [[ε, ξ], [ζ, μ]]
 
 A tensor material has no single refractive index: ``n`` and ``k`` raise
 ``TypeError``. The scalar materials do not change. The default propagation
