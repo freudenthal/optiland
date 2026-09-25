@@ -14,7 +14,9 @@ are in units of k0 = 2π/λ, the time dependence is exp(-iωt) and H' = η0 H.
   Im q > 1E-9 max(1, |q|), else if its power flux goes into +z; the sign of
   Re q is not used. Each mode is scaled to unit flux. A degenerate pair (an
   isotropic medium, an optic axis, a binormal) gets the basis E_x = 0 and
-  E_y = 0 and the flag ``degenerate``.
+  E_y = 0 and the flag ``degenerate``. In a lossless medium at a real K a
+  propagating mode has a real q (``eig`` of the complex Δ of an optically
+  active or a gyrotropic medium leaves |Im q| of about 1E-16).
 * :func:`~optiland.anisotropic.plane_wave_modes` gives the two modes along a
   wave normal (the incident eigenmode of a crystal).
 * :func:`~optiland.anisotropic.solve_interface` gives, for each child, the wave

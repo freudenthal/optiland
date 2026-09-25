@@ -9,6 +9,7 @@ from .anisotropic import (
     BaseTensorMaterial,
     BianisotropicMaterial,
     BiaxialMaterial,
+    QuartzMaterial,
     TensorMaterial,
     UniaxialMaterial,
     alpha_from_gyration,
@@ -16,6 +17,8 @@ from .anisotropic import (
     gyration_from_alpha,
     kappa_from_rotatory_power,
     quartz_alpha,
+    quartz_rotatory_power,
+    standard_air_index,
 )
 from .base import BaseMaterial
 from .catalog import MaterialCatalog
@@ -43,6 +46,7 @@ __all__ = [
     "BaseTensorMaterial",
     "BianisotropicMaterial",
     "BiaxialMaterial",
+    "QuartzMaterial",
     "TensorMaterial",
     "UniaxialMaterial",
     "alpha_from_gyration",
@@ -50,6 +54,8 @@ __all__ = [
     "gyration_from_alpha",
     "kappa_from_rotatory_power",
     "quartz_alpha",
+    "quartz_rotatory_power",
+    "standard_air_index",
     # From base.py
     "BaseMaterial",
     # From ideal.py

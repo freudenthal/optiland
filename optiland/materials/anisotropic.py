@@ -71,6 +71,7 @@ __all__ = [
     "BaseTensorMaterial",
     "BiaxialMaterial",
     "BianisotropicMaterial",
+    "QuartzMaterial",
     "TensorMaterial",
     "UniaxialMaterial",
     "alpha_from_gyration",
@@ -78,6 +79,8 @@ __all__ = [
     "gyration_from_alpha",
     "kappa_from_rotatory_power",
     "quartz_alpha",
+    "quartz_rotatory_power",
+    "standard_air_index",
 ]
 
 _ROTATION_TOLERANCE = 1e-9
@@ -377,6 +380,56 @@ def quartz_alpha(kappa: float | Array, gyration_ratio: float = -0.525) -> Array:
     transverse = be.asarray(np.diag([1.0, 1.0, 0.0]))
     axial = be.asarray(np.diag([0.0, 0.0, 1.0]))
     return k * transverse + (k * (2 * gyration_ratio - 1)) * axial
+
+
+def standard_air_index(wavelength: float | Array) -> Array:
+    """Return the refractive index of standard dry air.
+
+    Ciddor (1996), Eq. (1): n - 1 = 1E-8 (5792105 / (238.0185 - σ²)
+    + 167917 / (57.362 - σ²)), σ = 1/λ0 in µm⁻¹. Standard air is 15 °C,
+    101325 Pa, 0 % humidity and 450 ppm CO2. Use it to change a wavelength
+    in air into the vacuum wavelength (λ0 = n λ_air) and back.
+
+    Reference: P. E. Ciddor, "Refractive index of air: new equations for the
+    visible and near infrared," Appl. Opt. 35, 1566-1573 (1996).
+
+    Args:
+        wavelength: The vacuum wavelength λ0 in µm.
+
+    Returns:
+        be.ndarray: n of standard air.
+    """
+    s2 = 1.0 / be.asarray(wavelength) ** 2
+    return 1.0 + 1e-8 * (5792105.0 / (238.0185 - s2) + 167917.0 / (57.362 - s2))
+
+
+def quartz_rotatory_power(wavelength: float | Array) -> Array:
+    """Return the rotatory power of right quartz along its optic axis.
+
+    Lowry and Coode-Adams (1927), formula (vi) (p. 395), at 20 °C:
+    ρ = 9.5639 / (λ² - 0.0127493) - 2.3113 / (λ² - 0.000974) - 0.1905 °/mm,
+    with λ the wavelength in air in µm. The formula agrees with the
+    measurements from 0.2373 µm to 2.5 µm; the authors give ±0.002 °/mm in the
+    visible. This function takes the vacuum wavelength λ0 and uses
+    λ = λ0 / n_air(λ0) (:func:`standard_air_index`).
+
+    Right quartz is dextrorotatory: ρ > 0 and κ > 0
+    (:func:`kappa_from_rotatory_power`). Left quartz has -ρ.
+
+    Reference: T. M. Lowry, W. R. C. Coode-Adams, "Optical rotatory
+    dispersion. Part III. The rotatory dispersion of quartz in the
+    infra-red, visible and ultra-violet regions of the spectrum," Phil.
+    Trans. R. Soc. A 226, 391-466 (1927).
+
+    Args:
+        wavelength: The vacuum wavelength λ0 in µm.
+
+    Returns:
+        be.ndarray: ρ in degrees per mm.
+    """
+    w = be.asarray(wavelength)
+    l2 = (w / standard_air_index(w)) ** 2
+    return 9.5639 / (l2 - 0.0127493) - 2.3113 / (l2 - 0.000974) - 0.1905
 
 
 # ---------------------------------------------------------------------------
@@ -1029,4 +1082,113 @@ class BianisotropicMaterial(TensorMaterial):  # type: ignore[no-untyped-call]
             zeta=cls._spec(data.get("zeta"), "zeta"),
             mu=mu,
             rotation=rotation,
+        )
+
+
+class QuartzMaterial(BianisotropicMaterial):  # type: ignore[no-untyped-call]
+    """α-quartz (class 32) with its optical activity.
+
+    ε_L = diag(n_o², n_o², n_e²) from two scalar materials (default Ghosh
+    1999, ``Material("SiO2", reference="Ghosh-o")`` and ``"Ghosh-e"``,
+    0.198-2.05 µm), the rotatory power of :func:`quartz_rotatory_power`
+    (Lowry and Coode-Adams 1927, 20 °C), κ = ± ρ λ0 / (2π)
+    (:func:`kappa_from_rotatory_power`), α = :func:`quartz_alpha` (κ,
+    ``gyration_ratio``), ξ = iα, ζ = -iαᵀ and ε = ε_L + ααᵀ. The optic axis
+    is the crystal z axis; ``rotation`` turns it into the global frame.
+
+    The wavelength is the vacuum wavelength in µm. Along the optic axis the
+    modes are circular, n_{L,R} = √(n_o² + κ²) ± κ, and a linear polarization
+    turns by ρ d (right quartz: clockwise as seen by an observer who looks
+    toward the source).
+
+    Args:
+        hand: ``"right"`` (dextrorotatory, κ > 0) or ``"left"`` (κ < 0).
+        rotation: The crystal-to-global rotation R. None is the identity.
+        gyration_ratio: γ11/γ33; the default -0.525 is from Arteaga et al.
+            (2012).
+        ordinary: The material of n_o. None is Ghosh 1999.
+        extraordinary: The material of n_e. None is Ghosh 1999.
+        propagation_model: The propagation model.
+    """
+
+    def __init__(
+        self,
+        hand: str = "right",
+        rotation: Any = None,
+        gyration_ratio: float = -0.525,
+        ordinary: BaseMaterial | None = None,
+        extraordinary: BaseMaterial | None = None,
+        propagation_model: BasePropagationModel | None = None,
+    ):
+        if hand not in ("right", "left"):
+            raise ValueError(f"hand must be 'right' or 'left', got {hand!r}.")
+        from optiland.materials.material import Material
+
+        if ordinary is None:
+            ordinary = Material("SiO2", reference="Ghosh-o")
+        if extraordinary is None:
+            extraordinary = Material("SiO2", reference="Ghosh-e")
+        super().__init__(
+            UniaxialMaterial(ordinary, extraordinary),
+            rotation=rotation,
+            propagation_model=propagation_model,
+        )
+        self.hand = hand
+        self.gyration_ratio = float(gyration_ratio)
+        self.ordinary = ordinary
+        self.extraordinary = extraordinary
+        self._alpha = _Source(self._quartz_alpha, "alpha")
+        self._add_alpha_squared = True
+
+    def _quartz_alpha(self, w: Array) -> Array:
+        sign = 1.0 if self.hand == "right" else -1.0
+        kappa = sign * kappa_from_rotatory_power(quartz_rotatory_power(w), w)
+        return quartz_alpha(kappa, self.gyration_ratio)
+
+    def kappa(self, wavelength: float | Array) -> Array:
+        """Return κ = ± ρ λ0 / (2π), + for right quartz.
+
+        Args:
+            wavelength: The vacuum wavelength(s) in µm.
+
+        Returns:
+            be.ndarray: κ, shape (N,).
+        """
+        w = _wavelengths(wavelength)
+        sign = 1.0 if self.hand == "right" else -1.0
+        return sign * kappa_from_rotatory_power(quartz_rotatory_power(w), w)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a dictionary representation of the material.
+
+        Returns:
+            dict: The representation.
+        """
+        data = BaseTensorMaterial.to_dict(self)
+        data.update(
+            {
+                "hand": self.hand,
+                "gyration_ratio": self.gyration_ratio,
+                "ordinary": _material_to_dict(self.ordinary),
+                "extraordinary": _material_to_dict(self.extraordinary),
+            }
+        )
+        return data
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> QuartzMaterial:
+        """Create the material from its dictionary representation.
+
+        Args:
+            data: The dictionary of :meth:`to_dict`.
+
+        Returns:
+            QuartzMaterial: The material.
+        """
+        return cls(
+            hand=data.get("hand", "right"),
+            rotation=data.get("rotation"),
+            gyration_ratio=data.get("gyration_ratio", -0.525),
+            ordinary=_material_from_dict(data["ordinary"]),
+            extraordinary=_material_from_dict(data["extraordinary"]),
         )

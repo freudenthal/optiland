@@ -36,6 +36,8 @@ Conventions:
   (if that component is below 1E-12 |ψ|, H'_x or E_x instead). Scale: the
   flux |S_z| = 1 (S = Re(E × H'*) / 2), or |ψ| = 1 for a mode that carries no
   power along z (evanescent).
+* Lossless medium at a real K: a mode with |Im q| <= 1E-9 max(1, |q|) has
+  q = Re q (``eig`` of a complex Δ leaves about 1E-16).
 
 References:
 
@@ -464,6 +466,22 @@ def _flux_orthogonalize(
     return _columns(cols)
 
 
+def _real_propagating(q: Array, tangential: Array, transparent: Array) -> Array:
+    """Drop the rounding Im q of the propagating modes of a lossless medium.
+
+    At a real K, a mode of a lossless medium that is not evanescent has a
+    real q. ``eig`` of a complex Δ (an optically active or a gyrotropic
+    medium) leaves |Im q| of about 1E-16; over a path of k0 d = 1E4 that is a
+    power loss of 1E-12. A mode with |Im q| <= 1E-9 max(1, |q|) (the forward
+    rule of E-09) gets q = Re q.
+    """
+    q_abs = be.abs(q)
+    small = be.abs(be.imag(q)) <= FORWARD_RTOL * be.maximum(be.ones_like(q_abs), q_abs)
+    real_k = be.abs(be.imag(tangential)) == 0
+    keep = small & (transparent & real_k)[:, None]
+    return be.where(keep, be.to_complex(be.real(q)), q)
+
+
 def _modes(tangential: Array, matrix: Array) -> Eigenmodes:
     """Return the eigenmodes for complex backend inputs of equal length."""
     delta, e_z, h_z = _delta(tangential, matrix)
@@ -487,6 +505,7 @@ def _modes(tangential: Array, matrix: Array) -> Eigenmodes:
         transparent = _is_transparent(matrix)
         psi = _flux_orthogonalize(psi, transparent, evanescent, degenerate)
         psi, evanescent = _phase_and_scale(psi)
+        q = _real_propagating(q, tangential, transparent)
     e_zm = _sum(e_z[:, :, None] * psi, axis=1)  # (N, 4 modes)
     h_zm = _sum(h_z[:, :, None] * psi, axis=1)
     e = be.concatenate(
