@@ -26,13 +26,18 @@ References:
 
 * G. Yun, K. Crabtree, R. A. Chipman, "Three-dimensional polarization
   ray-tracing calculus I: definition and diattenuation," Appl. Opt. 50,
-  2855-2865 (2011).
+  2855-2865 (2011). Eqs. (11)-(16), pp. 2857-2858: P and its Jones matrix;
+  Eqs. (20)-(28), pp. 2859-2860: diattenuation.
 * G. Yun, S. C. McClain, R. A. Chipman, "Three-dimensional polarization
   ray-tracing calculus II: retardance," Appl. Opt. 50, 2866-2874 (2011).
+  Eqs. (3)-(7), pp. 2867-2868: Q and the retardance; App. A, Eq. (A3).
 * S.-Y. Lu, R. A. Chipman, "Interpretation of Mueller matrices based on polar
-  decomposition," J. Opt. Soc. Am. A 13, 1106-1113 (1996).
+  decomposition," J. Opt. Soc. Am. A 13, 1106-1113 (1996). Eq. (27),
+  p. 1109: diattenuation.
 * J. J. Gil, E. Bernabeu, "Depolarization and polarization indices of an
-  optical system," Opt. Acta 33, 185-189 (1986).
+  optical system," Opt. Acta 33, 185-189 (1986). Eq. (23): the
+  depolarization index. (This module does not use the polar decomposition
+  of Gil and Bernabeu, Optik 76, 67 (1987).)
 """
 
 from __future__ import annotations
@@ -140,7 +145,8 @@ def jones_from_prt(
     """Return the 2 x 2 Jones matrix of a PRT matrix in stated frames.
 
     J[i, j] = e_out_i · (P e_in_j) with e_in = (x_in, y_in) and
-    e_out = (x_out, y_out). The frame vectors are real.
+    e_out = (x_out, y_out). The frame vectors are real (Yun et al. 2011,
+    part I, Eqs. (13)-(16)).
 
     Args:
         prt: (N, 3, 3) PRT matrices.
@@ -295,8 +301,15 @@ def diattenuation(prt: Array, k_in: Array, k_out: Array) -> Array:
     """Return the diattenuation of PRT matrices (Yun et al. 2011, part I).
 
     D = (Λ1² - Λ2²) / (Λ1² + Λ2²), with Λ1 >= Λ2 the singular values of the
-    transverse part of P. D is 0 for a non-diattenuating path and 1 for a
-    polarizer. The value does not depend on the choice of frames.
+    transverse part of P (part I, Eqs. (20)-(28)). D is 0 for a
+    non-diattenuating path and 1 for a polarizer. The value does not depend
+    on the choice of frames.
+
+    The output field is taken as transverse to k_out. That holds at the exit
+    into an isotropic medium. Inside an anisotropic medium the field of an
+    extraordinary mode has a component along k, and the value can differ
+    from the singular values of the full P. Evaluate D after the exit into
+    an isotropic medium.
 
     Args:
         prt: (N, 3, 3) PRT matrices.
@@ -326,8 +339,18 @@ def retardance(prt: Array, q: Array, k_in: Array) -> Array:
     unitary factor of P after the geometrical transformation Q is removed:
     Q is the PRT matrix of the same path without polarization effects
     (``PolarizedRays.q``, the parallel transport of the ray frame). The value
-    is in [0, π]. It is not defined for a matrix with a zero singular value in
-    the transverse plane (an ideal polarizer); the result is then NaN.
+    is in [0, π]; it is not unwrapped (a plate of 1.2π reads 0.8π). It is not
+    defined for a matrix with a zero singular value in the transverse plane
+    (an ideal polarizer); the result is then NaN. Elliptical
+    eigenpolarizations are included.
+
+    The value is the Jones-calculus retardance in right-handed frames. The Q
+    of a reflection here is a rotation (det Q = +1). Yun et al. (part II,
+    Eqs. (3), (7), (17)) use a Q that inverts the frame at a reflection
+    (det Q = -1). For a path with an odd number of reflections this function
+    returns π - δ, with δ the value of part II: an ideal mirror gives π, not
+    0. The output field is taken as transverse to k_out (see
+    :func:`diattenuation`).
 
     Args:
         prt: (N, 3, 3) PRT matrices.
@@ -372,7 +395,7 @@ def retardance(prt: Array, q: Array, k_in: Array) -> Array:
 def diattenuation_from_mueller(M: Array) -> Array:
     """Return the diattenuation of Mueller matrices (Lu and Chipman 1996).
 
-    D = sqrt(m01² + m02² + m03²) / m00.
+    D = sqrt(m01² + m02² + m03²) / m00 (Eq. (27)).
 
     Args:
         M: (N, 4, 4) Mueller matrices.
@@ -387,8 +410,8 @@ def diattenuation_from_mueller(M: Array) -> Array:
 def depolarization_index(M: Array) -> Array:
     """Return the depolarization index of Mueller matrices (Gil and Bernabeu).
 
-    DI = sqrt(Σ m_ij² - m00²) / (√3 m00): 1 for a non-depolarizing Mueller
-    matrix, 0 for an ideal depolarizer.
+    DI = sqrt(Σ m_ij² - m00²) / (√3 m00) (Gil and Bernabeu 1986, Eq. (23)):
+    1 for a non-depolarizing Mueller matrix, 0 for an ideal depolarizer.
 
     Args:
         M: (N, 4, 4) Mueller matrices.
