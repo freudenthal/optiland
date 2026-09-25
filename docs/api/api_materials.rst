@@ -131,12 +131,53 @@ broadcast result; trainable queries retain elementwise evaluation so every
 wavelength receives its own derivative. Cached constants are bypassed before
 lookup when an input or tracked parameter requires a fresh gradient graph.
 
+Tensor and Bianisotropic Materials
+----------------------------------
+
+:mod:`optiland.materials.anisotropic` gives materials whose response is a set of
+3 x 3 tensors: the relative permittivity ε, the permeability μ and the
+magnetoelectric tensors ξ and ζ of the Tellegen form D' = εE + ξH',
+B' = ζE + μH' (H' = η0 H, time dependence exp(-iωt)). Each tensor material
+returns the four tensors in the global frame, shape (N, 3, 3), at N wavelengths
+in µm, on both backends (``epsilon``, ``mu``, ``xi``, ``zeta``, ``tensors``,
+``constitutive_6x6``). It also reports ``is_isotropic``, ``is_transparent``
+(the 6 x 6 matrix is Hermitian), ``is_reciprocal`` (ε = εᵀ, μ = μᵀ, ξ = -ζᵀ) and
+the Post constraint tr(μ⁻¹(ξ + ζ)).
+
+* :class:`~optiland.materials.anisotropic.UniaxialMaterial`: two scalar
+  materials and an optic axis, ε = ε_o I + (ε_e - ε_o) ĉĉᵀ.
+* :class:`~optiland.materials.anisotropic.BiaxialMaterial`: three scalar
+  materials along the crystal axes and a crystal-to-global rotation R
+  (X_global = R X_crystal Rᵀ; ``euler_zxz_matrix`` gives R = Rz(φ) Rx(θ) Rz(ψ)).
+* :class:`~optiland.materials.anisotropic.TensorMaterial`: ε and μ from
+  constants, callables of the wavelength or other materials.
+* :class:`~optiland.materials.anisotropic.BianisotropicMaterial`: adds ξ and ζ.
+  ``from_optical_activity`` takes a Tellegen α (ξ = iα, ζ = -iαᵀ);
+  ``from_gyration`` takes a gyration tensor γ and uses α = (tr γ/2) I - γᵀ and
+  ε = ε_L + ααᵀ. ``quartz_alpha`` and ``kappa_from_rotatory_power`` (vacuum
+  wavelength) give the quartz values.
+
+.. code-block:: python
+
+   from optiland.materials import Material, UniaxialMaterial
+
+   calcite = UniaxialMaterial(
+       Material("CaCO3", reference="Ghosh-o"),
+       Material("CaCO3", reference="Ghosh-e"),
+       optic_axis=(0.0, 0.0, 1.0),
+   )
+   eps = calcite.epsilon(0.5893)  # (1, 3, 3) complex
+
+A tensor material has no single refractive index: ``n`` and ``k`` raise
+``TypeError``. The scalar materials do not change.
+
 .. autosummary::
    :toctree: materials/
    :caption: Material Modules
 
    materials.base
    materials.abbe
+   materials.anisotropic
    materials.ideal
    materials.material_file
    materials.material

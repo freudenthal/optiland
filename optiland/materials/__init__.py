@@ -5,6 +5,18 @@ refractiveindex.info data files."""
 from __future__ import annotations
 
 from .abbe import AbbeMaterial, AbbeMaterialE
+from .anisotropic import (
+    BaseTensorMaterial,
+    BianisotropicMaterial,
+    BiaxialMaterial,
+    TensorMaterial,
+    UniaxialMaterial,
+    alpha_from_gyration,
+    euler_zxz_matrix,
+    gyration_from_alpha,
+    kappa_from_rotatory_power,
+    quartz_alpha,
+)
 from .base import BaseMaterial
 from .catalog import MaterialCatalog
 from .ideal import IdealMaterial
@@ -27,6 +39,17 @@ __all__ = [
     # From abbe.py
     "AbbeMaterial",
     "AbbeMaterialE",
+    # From anisotropic.py
+    "BaseTensorMaterial",
+    "BianisotropicMaterial",
+    "BiaxialMaterial",
+    "TensorMaterial",
+    "UniaxialMaterial",
+    "alpha_from_gyration",
+    "euler_zxz_matrix",
+    "gyration_from_alpha",
+    "kappa_from_rotatory_power",
+    "quartz_alpha",
     # From base.py
     "BaseMaterial",
     # From ideal.py

@@ -147,6 +147,7 @@ module = [
     "optiland.diagnostics.*",
     "optiland._types",
     "optiland._deprecation",
+    "optiland.materials.anisotropic",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
