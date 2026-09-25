@@ -9,3 +9,4 @@ This section covers the raytracing functionality of the Optiland package, includ
 
    raytrace.paraxial_ray_tracer
    raytrace.real_ray_tracer
+   raytrace.branches

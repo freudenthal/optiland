@@ -152,6 +152,7 @@ module = [
     "optiland.rays.anisotropic_rays",
     "optiland.interactions.anisotropic_model",
     "optiland.propagation.anisotropic",
+    "optiland.raytrace.branches",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true

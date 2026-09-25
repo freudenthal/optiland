@@ -167,6 +167,18 @@ class SurfaceView:
         return post
 
     @property
+    def interface_materials(self) -> tuple[BaseMaterial, BaseMaterial]:
+        """The ``(incident, far)`` media of the physical interface of this step.
+
+        Equal to ``(material_pre, material_post)`` for a refracting step. For
+        a reflecting step ``material_post`` is the incident medium, and the
+        far medium is the one the surface separates it from: an interaction
+        model that computes the reflection of the bare interface (for example
+        a ghost reflection) reads it here.
+        """
+        return resolve_view_materials(self.base_surface, self.reverse, None)
+
+    @property
     def previous_surface(self):
         """Anchor for ``BaseInteractionModel.material_pre``'s chain lookup.
 
