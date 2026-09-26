@@ -4,8 +4,7 @@ The two reflected and the two transmitted child modes of a plane wave at an
 interface between two media with 6 x 6 constitutive matrices, at any surface
 normal, per ray, on both backends.
 
-Procedure (equation register E-11 of the project notes; Berreman 1972;
-Lekner 1991; McClain, Hillman and Chipman 1993):
+Procedure (Berreman 1972; Lekner 1991; McClain, Hillman and Chipman 1993):
 
 1. The interface frame (``frames.interface_frame``): ẑ = n̂ from A into B, x̂
    along the tangential incident wave vector, K = k_in · x̂.
@@ -25,7 +24,7 @@ tangential H' is the free surface current. The two B columns of the matching
 are then the unit H'_x and H'_y columns, and the transmitted children are
 zero (flagged evanescent, power 0): two reflected modes, two equations.
 
-Outputs per child j (register E-10, E-14; project decisions of 2026-09-25):
+Outputs per child j:
 
 * The power fraction is ±S_j · n̂ / S_in · n̂ with S = Re(E × H'*) / 2 at the
   solved amplitudes; an evanescent child has power 0 and no ray (NaN).
