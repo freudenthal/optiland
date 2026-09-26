@@ -9,3 +9,4 @@ Coatings and Polarization
    ../examples/Tutorial_5b_Introduction_to_Polarization
    ../examples/Tutorial_5c_Thin_Film_Optimization_and_Needle_Synthesis
    ../examples/Tutorial_5d_Advanced_Thin_Film_Applications
+   polarization/Stokes_and_Mueller_Outputs
