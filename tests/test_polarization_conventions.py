@@ -356,11 +356,15 @@ class TestJonesPupilBasis:
 
 
 class TestMirrorCoating:
-    """D-8: a mirror surface keeps the coating that the user gives."""
+    """D-8: a mirror surface, and a sequence view of it, keep the coating that
+    the user gives."""
 
-    def test_mirror_keeps_fresnel_coating(self, set_test_backend):
-        theta = np.deg2rad(30.0)
-        coating = FresnelCoating(IdealMaterial(1.0), IdealMaterial(1.5))
+    AL = 1.4495 + 7.5387j  # aluminium at 633 nm
+
+    @staticmethod
+    def _mirror(coating, state: str = "H") -> optic.Optic:
+        """A plane mirror; the 30 degree field is incident in the y-z plane,
+        so x (H) is s and y (V) is p."""
         lens = optic.Optic()
         lens.surfaces.add(index=0, radius=np.inf, thickness=np.inf)
         lens.surfaces.add(
@@ -377,14 +381,99 @@ class TestMirrorCoating:
         lens.fields.add(y=0.0)
         lens.fields.add(y=30.0)
         lens.wavelengths.add(value=WL, is_primary=True)
-        lens.updater.set_polarization(create_polarization("H"))
+        lens.updater.set_polarization(create_polarization(state))
+        return lens
+
+    @staticmethod
+    def _trace(lens: optic.Optic, sequence: bool):
+        """The 30 degree ray, by the optic itself or by a sequence view of its
+        surfaces in the nominal order."""
+        tracer = lens.add_sequence("nominal", [0, 1, 2]) if sequence else lens
+        return tracer.trace(
+            Hx=0, Hy=1, wavelength=WL, num_rays=1, distribution="line_y"
+        )
+
+    def test_mirror_keeps_fresnel_coating(self, set_test_backend):
+        theta = np.deg2rad(30.0)
+        lens = self._mirror(FresnelCoating(IdealMaterial(1.0), IdealMaterial(1.5)))
 
         mirror_coating = lens.surfaces[1].interaction_model.coating
         assert mirror_coating.material_post.index == 1.5
 
-        rays = lens.trace(Hx=0, Hy=1, wavelength=WL, num_rays=1, distribution="line_y")
+        rays = self._trace(lens, sequence=False)
         rs, _, _, _, _ = _fresnel(1.5, theta)
         assert_allclose(rays.i, abs(rs) ** 2, rtol=0, atol=1e-12)
+
+    @pytest.mark.parametrize("state", ["H", "V"])
+    def test_sequence_view_keeps_fresnel_coating(self, set_test_backend, state):
+        """A metal mirror reflects |r_s|^2 and |r_p|^2 in a sequence view, as
+        in the optic (before, the view rebuilt the coating as air | air)."""
+        metal = IdealMaterial(self.AL.real, self.AL.imag)
+        lens = self._mirror(FresnelCoating(IdealMaterial(1.0), metal), state)
+        rs, rp, _, _, _ = _fresnel(self.AL, np.deg2rad(30.0))
+        expected = abs(rs if state == "H" else rp) ** 2
+        for sequence in (False, True):
+            rays = self._trace(lens, sequence)
+            assert_allclose(rays.i, expected, rtol=0, atol=1e-12)
+
+    @pytest.mark.parametrize("state", ["H", "V"])
+    def test_sequence_view_keeps_thin_film_substrate(self, set_test_backend, state):
+        """One layer (index 1.38, 25 nm) on aluminium: the Airy formula of
+        ``test_single_absorbing_layer``, in the optic and in a sequence view."""
+        theta, n1, d = np.deg2rad(30.0), 1.38, 0.025
+        coating = ThinFilmCoating(
+            IdealMaterial(1.0),
+            IdealMaterial(self.AL.real, self.AL.imag),
+            layers=[(IdealMaterial(n1), d * 1e3, "layer")],
+        )
+        lens = self._mirror(coating, state)
+
+        n = (1.0, n1, self.AL)
+        nc = [np.sqrt(m**2 - np.sin(theta) ** 2 + 0j) for m in n]  # N cos
+        if state == "H":  # s
+            r01 = (nc[0] - nc[1]) / (nc[0] + nc[1])
+            r12 = (nc[1] - nc[2]) / (nc[1] + nc[2])
+        else:  # p
+            r01 = (n[1] ** 2 * nc[0] - n[0] ** 2 * nc[1]) / (
+                n[1] ** 2 * nc[0] + n[0] ** 2 * nc[1]
+            )
+            r12 = (n[2] ** 2 * nc[1] - n[1] ** 2 * nc[2]) / (
+                n[2] ** 2 * nc[1] + n[1] ** 2 * nc[2]
+            )
+        phase = np.exp(2j * 2 * np.pi * d * nc[1] / WL)
+        r = (r01 + r12 * phase) / (1 + r01 * r12 * phase)
+        for sequence in (False, True):
+            rays = self._trace(lens, sequence)
+            assert_allclose(rays.i, abs(r) ** 2, rtol=0, atol=1e-12)
+
+    def test_sequence_view_fresnel_string_on_mirror(self, set_test_backend):
+        """coating="fresnel" on a mirror follows the surface (no mirror
+        material, r = 0) in a sequence view too."""
+        lens = self._mirror("fresnel")
+        view = lens.add_sequence("nominal", [0, 1, 2]).surfaces.surfaces[1]
+        coating = view.interaction_model.coating
+        assert coating.follows_surface
+        assert coating.material_post == view.material_pre
+        rays = self._trace(lens, sequence=True)
+        assert_allclose(rays.i, 0.0, rtol=0, atol=1e-12)
+
+    def test_reverse_refracting_view_swaps_media(self, set_test_backend):
+        """A user coating on a refracting surface, traversed in reverse, is
+        rebuilt from the media of the view (glass into air)."""
+        air, glass = IdealMaterial(1.0), IdealMaterial(1.5)
+        lens = optic.Optic()
+        lens.surfaces.add(index=0, radius=np.inf, thickness=np.inf)
+        lens.surfaces.add(index=1, thickness=1.0, material=glass, is_stop=True)
+        lens.surfaces.add(index=2, thickness=1.0)
+        lens.surfaces.add(index=3)
+        lens.surfaces[1].interaction_model.coating = FresnelCoating(air, glass)
+        sequence = lens.add_sequence("back", [0, 1, (2, "reflect"), 1])
+        view = sequence.surfaces.surfaces[3]
+        assert view.reverse
+        assert not view.interaction_model.is_reflective
+        coating = view.interaction_model.coating
+        assert coating.material_pre == glass
+        assert coating.material_post == air
 
     def test_fresnel_string_follows_surface(self, set_test_backend):
         """coating="fresnel" on a refracting surface follows the surface

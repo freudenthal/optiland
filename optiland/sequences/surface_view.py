@@ -98,26 +98,46 @@ class SurfaceView:
         self.reset()
 
     def _rebind_coating(self) -> None:
-        """Rebind polarized coatings to this view's resolved media."""
+        """Rebind polarized coatings to this view's resolved media.
+
+        The incident material of the coating is the view's ``material_pre``.
+        The exit material is the view's ``material_post``, except on a mirror:
+        a reflecting view with ``material_post == material_pre``. There, as in
+        ``Surface``, a ``FresnelCoating`` that the user gave keeps its own exit
+        material and a ``ThinFilmCoating`` keeps its substrate (the mirror
+        substrate); an interface of a medium with itself has r = 0. A coating
+        that the surface made from its own materials (``follows_surface``) is
+        rebuilt from the view's media.
+        """
         coating = getattr(self.interaction_model, "coating", None)
         if coating is None:
             return
 
         from optiland.coatings import FresnelCoating, ThinFilmCoating
 
+        is_mirror = (
+            getattr(self.interaction_model, "is_reflective", False)
+            and self.material_post == self.material_pre
+        )
         if isinstance(coating, FresnelCoating):
-            self.interaction_model.coating = FresnelCoating(
-                self.material_pre, self.material_post
+            follows_surface = getattr(coating, "follows_surface", False)
+            keep = is_mirror and not follows_surface
+            new = FresnelCoating(
+                self.material_pre,
+                coating.material_post if keep else self.material_post,
             )
+            new.follows_surface = follows_surface
+            self.interaction_model.coating = new
         elif isinstance(coating, ThinFilmCoating):
             layers = [
-                (layer.material, layer.thickness_nm, layer.name)
+                (layer.material, layer.thickness_um * 1e3, layer.name)
                 for layer in coating.stack.layers
             ]
             if self.reverse:
                 layers = layers[::-1]
+            substrate = coating.material_post if is_mirror else self.material_post
             self.interaction_model.coating = ThinFilmCoating(
-                self.material_pre, self.material_post, layers=layers
+                self.material_pre, substrate, layers=layers
             )
 
     # -- Shared-by-reference passthrough properties -----------------------
