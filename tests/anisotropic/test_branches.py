@@ -1,11 +1,10 @@
 """Tests of ray splitting by branch enumeration (both backends).
 
-Closed forms (the project's oracle cases, register E-04, E-05, E-19, E-20):
-the calcite beam displacer (case 1: two branches, powers cos² and sin² of the
-input azimuth times the face transmittances), the Wollaston prism (cases 2 and
-9: exit angles; the branch powers add to the traced power), the Savart plate
-(cases 3 and 8: shear and the fringe phase of the coherent sum), the calcite
-Glan-Taylor (case 10: one branch survives, P_yy and its power), and a glass
+Closed forms: the calcite beam displacer (two branches, powers cos² and sin² of the
+input azimuth times the face transmittances), the Wollaston prism (exit
+angles; the branch powers add to the traced power), the Savart plate
+(shear and the fringe phase of the coherent sum), the calcite
+Glan-Taylor (one branch survives, P_yy and its power), and a glass
 plate with ghosts (the geometric series of R and T). The power ledger of a
 lossless system closes to 1E-12.
 """
@@ -96,7 +95,7 @@ def test_displacer_two_branches(set_test_backend, azimuth):
         result[e_key].power + result[o_key].power
     )
     _closed(result.ledger)
-    # Each branch equals the fixed-mode trace of stage 070.
+    # Each branch equals the fixed-mode trace of that path.
     for key in (o_key, e_key):
         rays = BranchTracer(optic).sequence(key).trace_generic(0.0, 0.0, 0.0, 0.0, WL)
         rays.update_intensity(optic.polarization_state)
@@ -138,14 +137,14 @@ def test_displacer_with_ghosts_is_the_plate_series(set_test_backend):
 @pytest.mark.parametrize(
     "theta, plane, x_exit, y_exit",
     [
-        (0.0, "xz", 3.5692606184, -3.6217511833),  # case 2 (10 digits)
-        (3.0, "yz", 3.5761302, -3.6249192),  # case 9 (7 digits)
+        (0.0, "xz", 3.5692606184, -3.6217511833),  # 10 digits
+        (3.0, "yz", 3.5761302, -3.6249192),  # 7 digits
         (3.0, "xz", 6.5379644, -0.5761934),
     ],
 )
 def test_wollaston_branches(set_test_backend, theta, plane, x_exit, y_exit):
-    """Cases 2 and 9: the x field (e -> o) and the y field (o -> e) leave at
-    the E-19 angles (measured in the x-z plane); the powers of the two main
+    """The x field (e -> o) and the y field (o -> e) leave at
+    the Snell-chain angles (measured in the x-z plane); the powers of the two main
     branches and the unfollowed reflections close the ledger."""
     media = [_calcite((1.0, 0.0, 0.0)), _calcite((0.0, 1.0, 0.0))]
     tilts = [0.0, math.radians(20.0), 0.0]
@@ -177,8 +176,8 @@ def test_wollaston_branches(set_test_backend, theta, plane, x_exit, y_exit):
 # ------------------------------------------------------------- Savart
 
 
-def test_savart_normal_incidence_case3(set_test_backend):
-    """Case 3: the beams e1 -> o2 and o1 -> e2 are displaced by
+def test_savart_normal_incidence(set_test_backend):
+    """The beams e1 -> o2 and o1 -> e2 are displaced by
     (-0.1092064213, 0) and (0, -0.1092064213) mm, separation 0.1544412022 mm,
     zero OPD; the o -> o and e -> e branches carry no power."""
     media = [_calcite((S45, 0.0, S45)), _calcite((0.0, S45, S45))]
@@ -200,8 +199,8 @@ def test_savart_normal_incidence_case3(set_test_backend):
     _closed(result.ledger)
 
 
-def test_savart_fringe_case8(set_test_backend):
-    """Case 8 (Zhang, Ren and Mu 2010) at 3°, t = 6 mm: OPD 0.0348725 mm and
+def test_savart_fringe(set_test_backend):
+    """Zhang, Ren and Mu 2010 at 3°, t = 6 mm: OPD 0.0348725 mm and
     shear 0.9418175 mm (7 digits). Behind an analyzer at 45° the coherent sum
     of the two branches is P_a + P_b + 2 √(P_a P_b) cos φ, φ = k0 OPD."""
     media = [
@@ -270,8 +269,8 @@ def _glan_taylor(ghosts=None):
 
 
 @pytest.mark.parametrize("ghosts", [None, [2]])
-def test_glan_taylor_case10(set_test_backend, ghosts):
-    """Case 10: the o branch is totally reflected at the gap; the e branch
+def test_glan_taylor(set_test_backend, ghosts):
+    """The o branch is totally reflected at the gap; the e branch
     has P_yy = 0.8907650 and the power 0.7934623 of the y input (7 digits),
     and it is the only branch with power; the ledger closes."""
     result = _glan_taylor(ghosts).trace_all(rays=_rays())

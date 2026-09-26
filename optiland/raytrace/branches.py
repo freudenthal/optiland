@@ -246,8 +246,8 @@ class BranchResult:
         Each branch field is carried from its exit point X_b to the exit point
         X_r of the reference branch by its local plane wave:
         E_b exp(i k0 Re(k_b) · (X_r − X_b)). For parallel exit rays this is
-        the optical path difference on a common wavefront (R-50 of the
-        project: OPL_a − OPL_b − n ŝ · (X_a − X_b)).
+        the optical path difference on a common wavefront:
+        OPL_a − OPL_b − n ŝ · (X_a − X_b).
 
         Args:
             keys: The branches to add; None adds every branch that reaches
