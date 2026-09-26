@@ -294,7 +294,7 @@ def test_plane_wave_modes_biaxial_fresnel_equation(set_test_backend):
 
 
 def test_walkoff_calcite_45(set_test_backend):
-    """Oracle case 1: the e ray of calcite with k at 45° from the axis walks off
+    """The e ray of calcite with k at 45° from the axis walks off
     by 6.2323695095° (tan ρ = tan θ (n_e² - n_o²)/(n_e² + n_o² tan² θ)).
 
     The indices are printed to 10 decimals, which moves ρ by up to 2E-9°: the
