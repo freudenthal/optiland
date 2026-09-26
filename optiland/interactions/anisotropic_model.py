@@ -15,7 +15,7 @@ At the surface:
    the plane-wave mode of A along the real wave normal of the ray that is
    nearest to the carried k (``plane_wave_modes``).
 2. The solver gives the children (r1, r2, t1, t2) with their wave vectors,
-   ray directions, mode fields and PRT matrices (register E-11, E-14).
+   ray directions, mode fields and PRT matrices.
 3. The model selects the transmitted child of its mode. It sets the ray
    direction to the child ray S / |S| (into an isotropic medium: the unit
    Re k), sets k to the child wave vector, multiplies the child PRT matrix
