@@ -15,7 +15,7 @@ At the surface:
    the plane-wave mode of A along the real wave normal of the ray that is
    nearest to the carried k (``plane_wave_modes``).
 2. The solver gives the children (r1, r2, t1, t2) with their wave vectors,
-   ray directions, mode fields and PRT matrices (register E-11, E-14).
+   ray directions, mode fields and PRT matrices.
 3. The model selects the child of its mode: a transmitted child, or a
    reflected child when ``is_reflective`` is set (a reflecting step of a
    ``SurfaceView``: the ghost and total-internal-reflection branches of

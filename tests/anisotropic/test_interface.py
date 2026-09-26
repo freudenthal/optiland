@@ -1,12 +1,11 @@
 """Tests of the interface solver (closed forms, both backends).
 
-Closed forms: the Fresnel coefficients of the fixed ``JonesFresnel`` (isotropic
-limit; the comparison with ``JonesFresnel`` itself is a cross-check of the
-integration branch, because this branch does not contain the fix), Lekner 1991
-Eqs. (34), (35), (42) (isotropic | uniaxial; t_se = +2 q1 A / D, the printed
-sign is a misprint), and the project's oracle cases 1, 2, 6 and 10 (calcite
-walk-off, the Wollaston prism, a forward mode with Re q < 0, the Glan-Taylor
-surfaces).
+Closed forms: the Fresnel coefficients in the exp(-iωt) convention (isotropic
+limit; the comparison with ``JonesFresnel`` itself needs the polarization
+fixes of the sequential trace), Lekner 1991 Eqs. (34), (35), (42) (isotropic |
+uniaxial; t_se = +2 q1 A / D, the printed sign is a misprint), and crystal
+elements (calcite walk-off, the Wollaston prism, a forward mode with Re q < 0,
+the Glan-Taylor surfaces).
 """
 
 from __future__ import annotations
@@ -25,8 +24,8 @@ from optiland.anisotropic import (
 from optiland.materials import IdealMaterial
 from optiland.materials.anisotropic import UniaxialMaterial
 
-CALCITE = (1.6583434042, 1.4861300612)  # Ghosh 1999, 589.3 nm (oracle case 1)
-CALCITE_HANDBOOK = (1.65835, 1.48640)  # oracle case 10 (Chipman 2019 ch. 22)
+CALCITE = (1.6583434042, 1.4861300612)  # Ghosh 1999, 589.3 nm
+CALCITE_HANDBOOK = (1.65835, 1.48640)  # Chipman 2019, ch. 22
 
 
 def _np(x):
@@ -73,8 +72,8 @@ def _random_rotation(rng):
 
 
 def _fresnel_jones(n1, n2, theta, reflect):
-    """The Jones entries (s, p) of the fixed ``JonesFresnel`` (stage 030 of the
-    project: exp(-iωt), n + ik, p = k × s on each side), shape (N, 2).
+    """The Jones entries (s, p) of the fixed ``JonesFresnel`` (exp(-iωt),
+    n + ik, p = k × s on each side), shape (N, 2).
 
     N = n2 / n1, root = the principal sqrt(N² - sin²θ);
     r_s = (cos θ - root) / (cos θ + root), r_p = (N² cos θ - root) / (N² cos θ + root),
@@ -165,7 +164,7 @@ def test_isotropic_prt_is_the_yun_form(set_test_backend):
 
 
 def _lekner(n1, theta, n_o, n_e, c):
-    """Lekner 1991 Eqs. (27), (28), (34), (35), (42) (register E-12, R-27)."""
+    """Lekner 1991 Eqs. (27), (28), (34), (35), (42)."""
     eps_o, eps_e = n_o**2, n_e**2
     a, b, g = c
     de = eps_e - eps_o
@@ -189,7 +188,7 @@ def _lekner(n1, theta, n_o, n_e, c):
         * ((q1 + q_e) * e_o[0] * e_e[1] - (q1 + q_o) * e_e[0] * e_o[1])
         - 1,
         "r_ps": 2 * n1 * (q_e - q_o) * e_o[1] * e_e[1] / den,
-        # t_se = +2 q1 A / D: Lekner prints -2 q1 A / D (a misprint, R-27).
+        # t_se = +2 q1 A / D: Lekner prints -2 q1 A / D (a misprint).
         "t_s": (-2 * q1 * big_b / den) * e_o + (2 * q1 * big_a / den) * e_e,
         "t_p": (2 * n1 * (q1 + q_e) * e_e[1] / den) * e_o
         + (-2 * n1 * (q1 + q_o) * e_o[1] / den) * e_e,
@@ -232,7 +231,7 @@ def test_lekner_isotropic_to_uniaxial(set_test_backend):
 
 def test_energy_balance_lossless(set_test_backend):
     """Anisotropic A (an incident eigenmode) and B at random normals: the child
-    powers sum to 1 and R + T = 1 to 1E-12 (register E-10)."""
+    powers sum to 1 and R + T = 1 to 1E-12."""
     rng = np.random.default_rng(23)
     for trial in range(40):
         if trial % 2:
@@ -264,7 +263,7 @@ def test_energy_balance_lossless(set_test_backend):
 def test_absorbing_exit_summed_flux(set_test_backend):
     """An absorbing crystal B behind a lossless A: R + T of the summed fields is
     1 to 1E-12 (flux is continuous at the surface); the per-mode fluxes are
-    reported but are not additive (R-34)."""
+    reported but are not additive."""
     rng = np.random.default_rng(29)
     for _ in range(10):
         mb = _uniaxial(1.6 + 0.2j, 1.9 + 0.05j, _random_unit(rng))
@@ -299,8 +298,8 @@ def test_total_internal_reflection_out_of_a_crystal(set_test_backend):
         assert abs(_np(result.reflectance)[0] - 1.0) < 1e-12
 
 
-def test_total_internal_reflection_into_a_crystal_case6(set_test_backend):
-    """Oracle case 6: n1 = 2.2 at K = 1.9612731829573937 into n_o 1.5, n_e 2.6
+def test_total_internal_reflection_into_a_crystal(set_test_backend):
+    """n1 = 2.2 at K = 1.9612731829573937 into n_o 1.5, n_e 2.6
     (axis 0.9328571428571428 rad from n̂): the o child is evanescent, the e
     child has q = -1.0440997527 and S · n̂ > 0, and the powers sum to 1."""
     phi = 0.9328571428571428
@@ -342,11 +341,11 @@ def test_optic_axis_crossing_is_continuous(set_test_backend):
     assert np.max(np.abs(power.sum(axis=1) - 1.0)) < 1e-12
 
 
-# --------------------------------------------------------------------- oracle cases
+# ----------------------------------------------------------------- crystal elements
 
 
-def test_calcite_displacer_walkoff_case1(set_test_backend):
-    """Oracle case 1: air into calcite with the axis at 45° in the x-z plane at
+def test_calcite_displacer_walkoff(set_test_backend):
+    """Air into calcite with the axis at 45° in the x-z plane at
     normal incidence; the e ray shifts by -0.1092064213 mm per mm (the indices
     are printed to 10 decimals: 1E-9), the o ray does not shift."""
     n_o, n_e = CALCITE
@@ -381,8 +380,8 @@ def _glan_taylor_step(ma, mb, normal, k_in, e_in):
     )
 
 
-def test_glan_taylor_case10(set_test_backend):
-    """Oracle case 10 (Chipman 2019 ch. 22): calcite 1.65835 / 1.48640, axis ŷ in
+def test_glan_taylor(set_test_backend):
+    """Chipman 2019, ch. 22: calcite 1.65835 / 1.48640, axis ŷ in
     both prisms, air gap normal (0, -sin 40°, cos 40°), normal incidence.
 
     The y (e) path: field ratios 0.8043758, 1.8901704, 0.4900140, 1.1956242 and
@@ -514,8 +513,8 @@ def test_torch_gradient_of_transmitted_power():
         be.set_backend("numpy")
 
 
-def test_wollaston_case2(set_test_backend):
-    """Oracle case 2 (register E-19): a calcite Wollaston prism, wedge 20°, at
+def test_wollaston(set_test_backend):
+    """A calcite Wollaston prism, wedge 20°, at
     normal incidence. Prism 1 axis x̂, prism 2 axis ŷ, internal face normal
     (sin 20°, 0, cos 20°), exit face ẑ into air. An anisotropic A and an
     anisotropic B at a tilted face.

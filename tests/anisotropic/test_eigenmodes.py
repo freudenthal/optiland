@@ -1,8 +1,7 @@
 """Tests of the eigenmodes of homogeneous media (closed forms, both backends).
 
 The closed forms are from J. Lekner, J. Phys.: Condens. Matter 3, 6121 (1991)
-(Eqs. 20-31), Born and Wolf ch. 15 (the uniaxial and biaxial indices) and the
-project's equation register (E-04 to E-09, E-15, E-18).
+(Eqs. 20-31) and Born and Wolf ch. 15 (the uniaxial and biaxial indices).
 """
 
 from __future__ import annotations
@@ -21,9 +20,9 @@ from optiland.anisotropic import (
 
 from ..utils import assert_allclose
 
-# Calcite, Ghosh 1999 at 589.3 nm (project oracle case 1).
+# Calcite, Ghosh 1999 at 589.3 nm.
 CALCITE = (1.6583434042, 1.4861300612)
-# KTP, Kato and Takaoka 2002 at 632.8 nm (oracle case 5).
+# KTP, Kato and Takaoka 2002 at 632.8 nm.
 KTP = (1.7619723936, 1.7712901659, 1.8648041298)
 KTP_BINORMAL_DEG = 18.2279131512
 
@@ -72,7 +71,7 @@ def _maxwell_residual(k, e, h, m):
 
 
 def test_modes_solve_maxwell_random_bianisotropic(set_test_backend):
-    """Each mode of Δ solves the plane-wave Maxwell system (register E-01).
+    """Each mode of Δ solves the plane-wave Maxwell system (Berreman 1972).
 
     Random complex [[ε, ξ], [ζ, μ]] and K; relative residual 1E-12.
     """
@@ -134,7 +133,7 @@ def test_phase_rule_and_flux_scale(set_test_backend):
 
 
 def _lekner_q(k_t, eps_o, eps_e, c):
-    """Lekner 1991 Eqs. (21), (23): the forward q_o and q_e (register E-07)."""
+    """Lekner 1991 Eqs. (21), (23): the forward q_o and q_e."""
     a, b, g = c
     de = eps_e - eps_o
     q_o = np.sqrt(eps_o - k_t**2 + 0j)
@@ -144,8 +143,8 @@ def _lekner_q(k_t, eps_o, eps_e, c):
 
 
 def test_uniaxial_q_closed_form(set_test_backend):
-    """The forward q of a uniaxial medium equal Lekner's closed forms (E-06,
-    E-07) for random axes, lossless and lossy; the ordinary mode has E ⊥ ĉ."""
+    """The forward q of a uniaxial medium equal Lekner's closed forms (Eqs.
+    20-24) for random axes, lossless and lossy; the ordinary mode has E ⊥ ĉ."""
     rng = np.random.default_rng(11)
     for trial in range(40):
         n_o = rng.uniform(1.4, 2.4) + (0.02j if trial % 3 == 0 else 0.0)
@@ -164,7 +163,7 @@ def test_uniaxial_q_closed_form(set_test_backend):
 
 def test_uniaxial_fields(set_test_backend):
     """k · D = 0 for every mode; E_o ⊥ ĉ; S_o ∥ k_o and S_e ∥ ε k_e for a
-    lossless crystal (Lekner 1991 Eqs. 30, 31; register E-05)."""
+    lossless crystal (Lekner 1991 Eqs. 30, 31)."""
     rng = np.random.default_rng(5)
     for _ in range(20):
         c = _random_axis(rng)
@@ -186,7 +185,7 @@ def test_uniaxial_fields(set_test_backend):
 
 
 def test_forward_mode_with_negative_re_q(set_test_backend):
-    """Oracle case 6 (register E-09, R-26): n_o 1.5, n_e 2.6, axis at
+    """A forward mode with Re q < 0: n_o 1.5, n_e 2.6, axis at
     0.9328571428571428 rad from n̂ in the plane of incidence, K = 1.9612731829573937.
 
     The forward e mode has q = -1.0440997527 (printed to 10 decimals) and
@@ -217,7 +216,7 @@ def test_absorbing_forward_modes_decay(set_test_backend):
 
 
 def test_degenerate_flags(set_test_backend):
-    """Register E-09 and check C-09c: the calcite optic axis and the KTP
+    """Degenerate pairs: the calcite optic axis and the KTP
     binormal are flagged; 1E-3 rad off them and active quartz are not."""
     n_o, n_e = CALCITE
     axis = _six(_uniaxial(n_o, n_e, [0.0, 0.0, 1.0]))
@@ -236,7 +235,7 @@ def test_degenerate_flags(set_test_backend):
 
 
 def test_active_quartz_on_axis(set_test_backend):
-    """Quartz in the Tellegen form along its axis (register E-18): the modes
+    """Quartz in the Tellegen form along its axis: the modes
     are not degenerate and n = sqrt(n_o² + κ²) ± κ exactly; the circular
     modes tie in |E_y|, so the larger index is first."""
     n_o, n_e, kappa, ratio = 1.5442057388, 1.5533, 3.5574359e-05, -0.525
@@ -256,7 +255,7 @@ def test_active_quartz_on_axis(set_test_backend):
 
 def test_plane_wave_modes_uniaxial_indices(set_test_backend):
     """Along a wave normal at θ from the axis: n_o and n_e(θ) with
-    1/n_e(θ)² = cos²θ/n_o² + sin²θ/n_e² (register E-04)."""
+    1/n_e(θ)² = cos²θ/n_o² + sin²θ/n_e²."""
     n_o, n_e = CALCITE
     c = np.array([0.0, 0.0, 1.0])
     m = _six(_uniaxial(n_o, n_e, c))
@@ -271,7 +270,7 @@ def test_plane_wave_modes_uniaxial_indices(set_test_backend):
 
 def test_plane_wave_modes_biaxial_fresnel_equation(set_test_backend):
     """KTP along random wave normals: both indices solve Fresnel's equation of
-    wave normals Σ u_i² n_i² Π_(j≠i) (n² - n_j²) = 0 (register E-03)."""
+    wave normals Σ u_i² n_i² Π_(j≠i) (n² - n_j²) = 0."""
     rng = np.random.default_rng(13)
     ni = np.array(KTP)
     m = _six(np.diag(ni**2))
