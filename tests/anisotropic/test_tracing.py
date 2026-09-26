@@ -1,11 +1,10 @@
 """Tests of sequential tracing through anisotropic media (both backends).
 
-Closed forms (the project's oracle cases; register E-04, E-05, E-13, E-19,
-E-20): the calcite beam displacer (case 1), the Wollaston prism (case 2), the
-Savart plate at normal incidence (case 3) and at 3° (case 8, Zhang, Ren and Mu
-2010), the tilted calcite plate OPD (case 7, Avendaño-Alejo and Rosete-Aguilar
-2006, Eq. (33)), the Fresnel powers of a plate at normal incidence, and the
-attenuation of an absorbing plate. The isotropic limit: the golden systems of
+Closed forms: the calcite beam displacer, the Wollaston prism, the Savart
+plate at normal incidence and at 3° (Zhang, Ren and Mu 2010), the tilted
+calcite plate OPD (Avendaño-Alejo and Rosete-Aguilar 2006, Eq. (33)), the
+Fresnel powers of a plate at normal incidence, and the attenuation of an
+absorbing plate. The isotropic limit: the golden systems of
 ``tests/regression`` with their glasses replaced by equal isotropic tensors
 trace like the isotropic path with Fresnel coatings.
 """
@@ -38,9 +37,9 @@ from optiland.rays import (
 
 from ..regression.systems import GOLDEN_SYSTEMS
 
-CALCITE = (1.6583434042, 1.4861300612)  # Ghosh 1999, 589.3 nm (oracle case 1)
+CALCITE = (1.6583434042, 1.4861300612)  # Ghosh 1999, 589.3 nm
 CALCITE_632 = (1.6556901060, 1.4849090302)  # Ghosh 1999, 632.8 nm
-CALCITE_HANDBOOK = (1.65835, 1.48640)  # oracle case 8
+CALCITE_HANDBOOK = (1.65835, 1.48640)  # Zhang, Ren and Mu 2010
 WL = 0.5893
 
 
@@ -142,8 +141,8 @@ def _wavefront_opd(a, b, n_ambient=1.0):
     "indices, shift",
     [(CALCITE, -0.1092064213), (CALCITE_632, -0.1084363550)],
 )
-def test_calcite_displacer_case1(set_test_backend, indices, shift):
-    """Oracle case 1: the e ray walks off by -0.1092064213 mm per mm (589.3 nm),
+def test_calcite_displacer(set_test_backend, indices, shift):
+    """The e ray walks off by -0.1092064213 mm per mm (589.3 nm),
     the o ray does not move; OPL = n d along k (Re(k) · Δr)."""
     axis = (math.sin(math.pi / 4), 0.0, math.cos(math.pi / 4))
     for d in (1.0, 2.5):
@@ -156,7 +155,7 @@ def test_calcite_displacer_case1(set_test_backend, indices, shift):
         # Both leave along z.
         assert abs(_np(e.L)[0]) < 1e-15 and abs(_np(o.L)[0]) < 1e-15
         n_o, n_e = indices
-        n_45 = n_o * n_e / math.sqrt((n_o**2 + n_e**2) / 2)  # E-04 at 45°
+        n_45 = n_o * n_e / math.sqrt((n_o**2 + n_e**2) / 2)  # n_e(θ) at 45°
         path_air = 1.0 + 5.0  # before and after the plate
         assert abs(_np(o.opd)[0] - (path_air + n_o * d)) < 1e-12
         assert abs(_np(e.opd)[0] - (path_air + n_45 * d)) < 1e-12
@@ -165,8 +164,8 @@ def test_calcite_displacer_case1(set_test_backend, indices, shift):
 
 def test_calcite_walkoff_inside_the_plate(set_test_backend):
     """Inside the plate the ray is along S, the wave vector along z, and the
-    angle between them is the case 1 walk-off (E-05; -6.2323695075097° at
-    30 digits; the case table prints -6.2323695095, a misprint)."""
+    angle between them is the walk-off of the displacer (-6.2323695075097° at
+    30 digits)."""
     axis = (math.sin(math.pi / 4), 0.0, math.cos(math.pi / 4))
     optic = _crystal_optic([_calcite(axis)], [1.0])
     rays = _rays()
@@ -185,11 +184,11 @@ def test_calcite_walkoff_inside_the_plate(set_test_backend):
     "modes, angle",
     [(["o", "e", "T"], -3.6217511833), (["e", "o", "T"], 3.5692606184)],
 )
-def test_wollaston_case2(set_test_backend, modes, angle):
-    """Oracle case 2: calcite, prism axes x and y, cut at 20° (a tilted
+def test_wollaston(set_test_backend, modes, angle):
+    """Calcite, prism axes x and y, cut at 20° (a tilted
     surface: the tensors turn into the surface frame): the y-pol (o -> e) and
-    the x-pol (e -> o) exit angles equal the E-19 Snell chain to 1E-12°; the
-    case table (10 digits) carries 1.2E-9° of rounding (1E-8)."""
+    the x-pol (e -> o) exit angles equal the Snell chain of the two indices to
+    1E-12°; the expected angles (10 digits) carry 1.2E-9° of rounding (1E-8)."""
     media = [_calcite((1.0, 0.0, 0.0)), _calcite((0.0, 1.0, 0.0))]
     tilts = [0.0, math.radians(20.0), 0.0]
     optic = _crystal_optic(media, [2.0, 2.0], tilts=tilts)
@@ -205,8 +204,8 @@ def test_wollaston_case2(set_test_backend, modes, angle):
     assert abs(_np(rays.M)[0]) < 1e-15
 
 
-def test_savart_plate_case3(set_test_backend):
-    """Oracle case 3: two 1 mm plates, axes (1, 0, 1)/√2 and (0, 1, 1)/√2: the
+def test_savart_plate(set_test_backend):
+    """Two 1 mm plates, axes (1, 0, 1)/√2 and (0, 1, 1)/√2: the
     beams e1 -> o2 and o1 -> e2 shift by 0.1092064213 mm along -x and -y."""
     c = math.sqrt(0.5)
     media = [_calcite((c, 0.0, c)), _calcite((0.0, c, c))]
@@ -226,8 +225,8 @@ def test_savart_plate_case3(set_test_backend):
     "incidence, opd, shear",
     [(0.0, 0.0, 0.9251578), (3.0, 0.0348725, 0.9418175)],
 )
-def test_savart_plate_oblique_case8(set_test_backend, incidence, opd, shear):
-    """Oracle case 8 (Zhang, Ren and Mu 2010): 6 mm plates, handbook calcite,
+def test_savart_plate_oblique(set_test_backend, incidence, opd, shear):
+    """Zhang, Ren and Mu 2010: 6 mm plates, handbook calcite,
     incidence in the x-z plane: the OPD eo - oe on a common exit wavefront and
     the shear (the distance between the two exit beams) to the printed 7
     digits."""
@@ -260,8 +259,8 @@ def test_savart_plate_oblique_case8(set_test_backend, incidence, opd, shear):
         (60.0, 0.0074917159),
     ],
 )
-def test_tilted_plate_opd_case7(set_test_backend, incidence, opd_cm):
-    """Oracle case 7 (Avendaño-Alejo 2006, Eq. (33)): a 1 cm calcite plate
+def test_tilted_plate_opd(set_test_backend, incidence, opd_cm):
+    """Avendaño-Alejo 2006, Eq. (33): a 1 cm calcite plate
     (1.658 / 1.486), axis in the plane of incidence at arctan(n_e / n_o) from
     the normal: the o - e OPD on a common exit wavefront = (q_o - q_e) d."""
     n_o, n_e = 1.658, 1.486
@@ -387,7 +386,7 @@ def test_requires_anisotropic_rays(set_test_backend):
 def test_optic_trace_through_a_displacer(set_test_backend):
     """``Optic.trace`` (paraxial aiming, ray generation, update_intensity)
     through a calcite displacer: every ray of a collimated fan walks off by
-    the case 1 shift."""
+    the displacer shift."""
     axis = (math.sin(math.pi / 4), 0.0, math.cos(math.pi / 4))
     optic = _crystal_optic([_calcite(axis)], [2.0])
     optic.updater.set_polarization(create_polarization("H"))

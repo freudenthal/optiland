@@ -28,7 +28,8 @@ The following sections are covered:
 13. :doc:`External Tools Using Optiland <external_tools>`
 14. :doc:`Extended Sources <extended_sources>`
 15. :doc:`Non-Sequential Ray Tracing <nonsequential>`
-16. :doc:`Miscellaneous <miscellaneous>`
+16. :doc:`Anisotropic Media and Ray Splitting <anisotropic_media>`
+17. :doc:`Miscellaneous <miscellaneous>`
 
 .. toctree::
    :hidden:
@@ -49,4 +50,5 @@ The following sections are covered:
    external_tools
    extended_sources
    nonsequential
+   anisotropic_media
    miscellaneous
