@@ -11,7 +11,7 @@ Held data and closed forms:
   readings 0.004 °/mm (p. 402), the ultraviolet casual error 0.005 °/mm
   (p. 458). Also Lowry, Phil. Trans. A 212, 261-297 (1913), p. 293:
   21.7283 °/mm at the sodium mass centre (vacuum wavelength 0.58940502 µm).
-* A linear polarization turns by k0 κ d (register E-17, E-18); right quartz
+* A linear polarization turns by k0 κ d; right quartz
   turns x̂ toward -ŷ along +ẑ.
 * Quartz near the optic axis: circular modes on the axis (the slow mode is
   L = (1, i)); the index split √(Δ² + δ²) and the circularity δ / √(Δ² + δ²)
@@ -148,7 +148,7 @@ def test_quartz_rotatory_power_traced(set_test_backend, label, air_um, observed,
 
 
 def test_quartz_rotatory_power_lowry_1913(set_test_backend):
-    """Oracle case 4: 21.7283 °/mm at λ0 = 0.58940502 µm (±0.002 °/mm)."""
+    """Lowry 1913: 21.7283 °/mm at λ0 = 0.58940502 µm (±0.002 °/mm)."""
     jones = _jones(_crystal_optic([QuartzMaterial()], [1.0]), 0.58940502)
     psi, _ = _rotation_deg(jones[:, 0])
     assert abs(-psi - 21.7283) < 0.002
@@ -194,7 +194,7 @@ def test_quartz_modes_near_the_axis(set_test_backend):
     assert abs(index[1 - slow] - (root - kappa)) < 1e-14
     e = _np(modes.E)[0, slow]
     # L: counter-clockwise facing the source. The eig vectors of a pair split by
-    # 2κ carry about 1E-16 |Δ| / 2κ (R-43 of the project): 1E-9.
+    # 2κ carry about 1E-16 |Δ| / 2κ: 1E-9.
     assert abs(e[1] / e[0] - 1j) < 1e-9
 
     for degrees in (0.5, 1.0, 2.0, 5.0, 10.0, 30.0):
@@ -239,7 +239,7 @@ def _dcr(material_b, theta: float, wavelength: float = 0.5893) -> float:
 
 
 def test_differential_circular_reflection(set_test_backend):
-    """Oracle case 11. z-cut quartz at normal incidence: DCR = 0 in the Tellegen
+    """Z-cut quartz at normal incidence: DCR = 0 in the Tellegen
     form (the Landau matching would give 4κ/(n² - 1) = 1E-4). Silverman and
     Badoz, JOSA A 7, 1163 (1990): ε = η² diag(b, a, c), ξ = iκI, κ = f η,
     f = 1E-4: DCR = -0.0180641 f at 0° (η 1.5, a 1, b 1.2, c 1) and
