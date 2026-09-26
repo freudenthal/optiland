@@ -473,7 +473,7 @@ def _real_propagating(q: Array, tangential: Array, transparent: Array) -> Array:
     real q. ``eig`` of a complex Δ (an optically active or a gyrotropic
     medium) leaves |Im q| of about 1E-16; over a path of k0 d = 1E4 that is a
     power loss of 1E-12. A mode with |Im q| <= 1E-9 max(1, |q|) (the forward
-    rule of E-09) gets q = Re q.
+    rule of the sort) gets q = Re q.
     """
     q_abs = be.abs(q)
     small = be.abs(be.imag(q)) <= FORWARD_RTOL * be.maximum(be.ones_like(q_abs), q_abs)
