@@ -77,7 +77,7 @@ def test_uniaxial_calcite_against_ghosh_table(set_test_backend):
 
 def test_uniaxial_closed_form(set_test_backend):
     """ε = ε_o I + Δε ĉĉᵀ (Lekner 1991, Eq. 18): ĉᵀεĉ = ε_e, vᵀεv = ε_o for v ⊥ ĉ,
-    and the E-04 extraordinary condition kᵀεk = ε_o ε_e for n(θ)."""
+    and the extraordinary condition kᵀεk = ε_o ε_e for n(θ) (Lekner 1991, Eq. 22)."""
     ordinary, extraordinary = _calcite()
     wavelengths = np.array([0.4, 0.5893, 1.064])
     axis = np.array([0.3, -0.5, 0.8])
@@ -160,7 +160,7 @@ def test_rotation_invariants_biaxial(set_test_backend):
 
 
 def test_biaxial_optic_axes(set_test_backend):
-    """E-15: along a binormal (x-z plane, ±V from z) the section of the index
+    """Along a binormal (x-z plane, ±V from z) the section of the index
     ellipsoid is a circle of radius n_β: the plane ⊥ û has ε⁻¹ = I/n_β²."""
     x, y, z = _ktp()
     material = BiaxialMaterial(x, y, z)
@@ -270,7 +270,7 @@ def test_lossless_media_are_hermitian(set_test_backend):
 
 
 def test_kappa_from_rotatory_power(set_test_backend):
-    """Oracle case 4 (R-33): 21.7283 °/mm at λ0 = 589.4050191 nm."""
+    """21.7283 °/mm (Lowry 1913) at λ0 = 589.4050191 nm (vacuum wavelength)."""
     kappa = kappa_from_rotatory_power(21.7283, 0.5894050191)
     assert abs(float(kappa) - 3.5574359e-05) < 5e-13
 
@@ -301,7 +301,7 @@ def test_gyration_alpha_map(set_test_backend):
 
 
 def test_tellegen_and_landau_wave_equations_agree(set_test_backend):
-    """Register E-17, check C-17a: for ξ = iα, ζ = -iαᵀ and ε_T = ε_L + ααᵀ the
+    """For ξ = iα, ζ = -iαᵀ and ε_T = ε_L + ααᵀ the
     Tellegen wave matrix K(K - ζ) + ε_T + ξ(K - ζ) equals the Landau matrix
     KK + ε_L + i[γk]x for every k (K = [k]x), so the bulk modes are the same."""
     rng = np.random.default_rng(17)
@@ -324,7 +324,7 @@ def test_tellegen_and_landau_wave_equations_agree(set_test_backend):
 
 
 def test_quartz_on_axis_indices(set_test_backend):
-    """E-18: along the optic axis n_{L,R} = √(n_o² + κ²) ± κ exactly (the wave
+    """Along the optic axis n_{L,R} = √(n_o² + κ²) ± κ exactly (the wave
     matrix is singular there)."""
     ordinary, extraordinary = _quartz()
     kappa = float(kappa_from_rotatory_power(21.7283, 0.5894050191))

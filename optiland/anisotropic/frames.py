@@ -3,8 +3,7 @@
 The interface frame of a ray at a surface and the rotation of 6 x 6
 constitutive matrices into it.
 
-Conventions (equation register E-11 of the project notes; Lekner, J. Phys.:
-Condens. Matter 3, 6121 (1991)):
+Conventions (Lekner, J. Phys.: Condens. Matter 3, 6121 (1991)):
 
 * ẑ is the unit surface normal n̂, from the incident medium A into the exit
   medium B.
