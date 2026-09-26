@@ -42,8 +42,10 @@ References:
 * O. Arteaga, A. Canillas, G. E. Jellison, "Determination of the components
   of the gyration tensor of quartz by oblique incidence transmission
   two-modulator generalized ellipsometry," Appl. Opt. 48, 5307-5317 (2009),
-  and O. Arteaga et al., Opt. Express 20 (2012): the Tellegen form of
-  optical activity and γ11/γ33 = -0.525 for quartz.
+  and O. Arteaga, J. H. Freudenthal, B. Kahr, "Reckoning electromagnetic
+  principles with polarimetric measurements of anisotropic optically active
+  crystals," J. Appl. Cryst. 45, 279-291 (2012): the Tellegen form of optical
+  activity and, from its Table 1, γ11/γ33 = -0.525 for quartz near 589 nm.
 * E. U. Condon, "Theories of optical rotatory power," Rev. Mod. Phys. 9,
   432-457 (1937).
 """
