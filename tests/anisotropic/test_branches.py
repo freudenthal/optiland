@@ -69,7 +69,7 @@ def _exit(branch):
 
 @pytest.mark.parametrize("azimuth", [0.3, 1.1])
 def test_displacer_two_branches(set_test_backend, azimuth):
-    """Case 1: the e branch carries cos²a, the o branch sin²a of the input
+    """The e branch carries cos²a, the o branch sin²a of the input
     (x is the e field of the 45° cut), each times the transmittance of its two
     faces; the e ray walks off by -0.1092064213 d; the reflections that are
     not followed close the ledger."""
@@ -239,7 +239,7 @@ def test_savart_fringe(set_test_backend):
 
 
 def _glan_taylor(ghosts=None):
-    """Case 10: calcite (1.65835, 1.48640), axis y in both prisms, an air gap
+    """Calcite (1.65835, 1.48640), axis y in both prisms, an air gap
     of normal (0, -sin 40°, cos 40°), normal incidence."""
     calcite = _calcite((0.0, 1.0, 0.0), CALCITE_HANDBOOK)
     cut = math.radians(40.0)
