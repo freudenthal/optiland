@@ -13,7 +13,7 @@ Conventions:
   D'_z + K H'_y = 0 and B'_z - K E_y = 0, which fix E_z and H'_z; the
   transverse rows give q E_x = B'_y + K E_z, q E_y = -B'_x,
   q H'_x = -D'_y + K H'_z and q H'_y = D'_x. Thus q ψ = Δ ψ (Berreman 1972).
-* Sorting (equation register E-09): a mode is forward (it carries power or
+* Sorting: a mode is forward (it carries power or
   decays into +z) if Im q > 1E-9 max(1, |q|), else if S_z > 0. The sign of
   Re q is never used: a forward extraordinary mode can have Re q < 0. A grazing
   mode (|S_z| <= 1E-12 |ψ|²) falls back to Re q > 0; if the rule does not give
@@ -132,7 +132,7 @@ def _c(x: np.ndarray) -> Array:
 
 
 def _conj(z: Array) -> Array:
-    """Return the complex conjugate (not a lazy Torch conjugate, R-22)."""
+    """Return the complex conjugate (not a lazy Torch conjugate)."""
     return be.real(z) - 1j * be.imag(z)
 
 
