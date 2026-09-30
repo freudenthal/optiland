@@ -252,8 +252,8 @@ class TestHarveyShackSampling:
         bsdf = HarveyShackBSDF(b0=1e-2, l0=0.05, s=1.5)
         _, weights = self._sample(bsdf, n_rays=20_000)
         assert weights.max() == pytest.approx(1.0)
-        # Only unreachable samples (outside the hemisphere) are dropped.
-        assert weights.mean() > 0.5
+        # Every sample is drawn inside the reachable region.
+        assert weights.min() == pytest.approx(1.0)
 
     def test_total_integrated_scatter_is_a_fraction(self):
         """TIS is in [0, 1] and grows with the scatter amplitude."""
@@ -263,6 +263,147 @@ class TestHarveyShackSampling:
         assert 0.0 <= faint.total_integrated_scatter <= 1.0
         assert 0.0 <= strong.total_integrated_scatter <= 1.0
         assert strong.total_integrated_scatter > faint.total_integrated_scatter
+
+
+class TestHarveyShackIntegratedScatter:
+    """The lobe is integrated and sampled over the region a ray can reach.
+
+    Scattered direction cosines lie in the unit disk ``|beta| < 1``. With
+    ``s = 2`` the integral over the disk at normal incidence has the closed
+    form ``pi * b0 * l0**2 * ln(1 + 1 / l0**2)``.
+    """
+
+    CASES = ((1e3, 1e-3), (50.0, 1e-2), (5.0, 3e-2), (1e5, 1e-4))
+
+    def setup_method(self):
+        be.set_backend("numpy")
+
+    @staticmethod
+    def _sample(bsdf, theta_deg, n_rays=200_000, seed=5):
+        """Reflect a ray at theta_deg off a -z facing plane."""
+        th = np.radians(theta_deg)
+        incident = np.tile([np.sin(th), 0.0, np.cos(th)], (n_rays, 1))
+        normal = np.tile([0.0, 0.0, -1.0], (n_rays, 1))
+        dirs, weights, _ = bsdf.sample(
+            n_rays,
+            incident,
+            normal,
+            np.full(n_rays, 0.55),
+            NSQRng(seed),
+            np.arange(n_rays),
+            np.zeros(n_rays, dtype=np.int32),
+        )
+        return np.asarray(dirs), np.asarray(weights), incident, normal
+
+    @staticmethod
+    def _disk_quadrature(bsdf, b, n=3000):
+        """The lobe integrated over the unit disk, centred at |beta0| = b."""
+        r = np.linspace(0.0, 1.0, n)
+        phi = np.linspace(0.0, 2.0 * np.pi, 2 * n)
+        rr, pp = np.meshgrid(r, phi, indexing="ij")
+        f = bsdf._abg(np.hypot(rr * np.cos(pp) - b, rr * np.sin(pp))) * rr
+        return np.trapezoid(np.trapezoid(f, phi, axis=1), r)
+
+    def test_total_integrated_scatter_matches_closed_form(self):
+        """TIS at normal incidence is the integral over rho <= 1, not rho <= 2.
+
+        The integral to rho = 2 is 10-20 % larger for these cases; a table
+        with nodes 4.9e-4 apart also misses a lobe with l0 = 1e-4.
+        """
+        for b0, l0 in self.CASES:
+            bsdf = HarveyShackBSDF(b0=b0, l0=l0, s=2.0)
+            closed = np.pi * b0 * l0**2 * np.log(1.0 + 1.0 / l0**2)
+            assert bsdf.total_integrated_scatter == pytest.approx(closed, rel=1e-5)
+
+    def test_integrated_scatter_at_oblique_incidence(self):
+        """The reachable region shrinks with the angle of the reference ray."""
+        bsdf = HarveyShackBSDF(b0=5.0, l0=3e-2, s=1.5)
+        values = [float(bsdf.integrated_scatter(b)) for b in (0.0, 0.3, 0.7, 0.95)]
+        for b, value in zip((0.0, 0.3, 0.7, 0.95), values, strict=True):
+            assert value == pytest.approx(self._disk_quadrature(bsdf, b), rel=5e-4)
+        assert values == sorted(values, reverse=True)
+
+    def test_no_power_is_lost_at_oblique_incidence(self):
+        """Every sample is reachable and keeps its full flux.
+
+        A sampler that draws over rho <= 2 and zeroes the unreachable draws
+        loses 16 % of the scattered rays at normal incidence and 41 % at 70
+        degrees for this lobe.
+        """
+        bsdf = HarveyShackBSDF(b0=5.0, l0=3e-2, s=2.0)
+        for theta in (0.0, 45.0, 70.0):
+            dirs, weights, _, normal = self._sample(bsdf, theta)
+            assert np.all(weights == 1.0)
+            # the reflected lobe stays on the incident side (normal is -z)
+            assert np.all(dirs @ normal[0] >= -1e-12)
+            assert np.allclose(np.linalg.norm(dirs, axis=1), 1.0)
+
+    def test_oblique_distribution_matches_restricted_lobe(self):
+        """At 45 degrees the samples follow the lobe cut by the unit disk."""
+        bsdf = HarveyShackBSDF(b0=5.0, l0=3e-2, s=1.5)
+        n = 1_000_000
+        dirs, _, incident, normal = self._sample(bsdf, 45.0, n_rays=n, seed=11)
+        t, b = _orthonormal_basis(normal[:1])
+        spec = incident[0] - 2.0 * (incident[0] @ normal[0]) * normal[0]
+        b0x, b0y = spec @ t[0], spec @ b[0]
+        bins, sub = 30, 40
+        hist, _, _ = np.histogram2d(
+            dirs @ t[0], dirs @ b[0], bins=bins, range=[[-1, 1], [-1, 1]]
+        )
+        edges = np.linspace(-1.0, 1.0, bins * sub + 1)
+        c = 0.5 * (edges[1:] + edges[:-1])
+        x, y = np.meshgrid(c, c, indexing="ij")
+        f = bsdf._abg(np.hypot(x - b0x, y - b0y)) * (x**2 + y**2 < 1.0)
+        expected = f.reshape(bins, sub, bins, sub).sum(axis=(1, 3))
+        expected *= n / expected.sum()
+        keep = expected > 400
+        z = (hist[keep] - expected[keep]) / np.sqrt(expected[keep])
+        assert np.mean(z**2) < 1.3
+
+    def test_polished_lobe_is_resolved(self):
+        """The sampled median offset of an l0 = 1e-4 lobe is its analytic value.
+
+        For s = 2 truncated at rho = 1 the median is
+        l0 * sqrt(sqrt(1 + 1 / l0**2) - 1).
+        """
+        l0 = 1e-4
+        bsdf = HarveyShackBSDF(b0=1e5, l0=l0, s=2.0)
+        dirs, _, _, _ = self._sample(bsdf, 0.0, n_rays=400_000, seed=3)
+        median = np.median(np.hypot(dirs[:, 0], dirs[:, 1]))
+        expected = l0 * np.sqrt(np.sqrt(1.0 + 1.0 / l0**2) - 1.0)
+        assert median == pytest.approx(expected, rel=0.02)
+
+    def test_from_abg_is_the_same_lobe(self):
+        """A / (B + rho**g) with A = b0 l0**s, B = l0**s, g = s."""
+        bsdf = HarveyShackBSDF(b0=50.0, l0=1e-2, s=1.8)
+        abg = HarveyShackBSDF.from_abg(A=50.0 * 1e-2**1.8, B=1e-2**1.8, g=1.8)
+        rho = np.array([0.0, 3e-3, 1e-2, 3e-2, 0.5])
+        assert np.allclose(abg._abg(rho), bsdf._abg(rho), rtol=1e-12)
+        a, b = 50.0 * 1e-2**1.8, 1e-2**1.8
+        assert np.allclose(bsdf._abg(rho), a / (b + rho**1.8), rtol=1e-12)
+
+    @pytest.mark.parametrize("backend", ["numpy", "torch"])
+    def test_weights_are_full_on_both_backends(self, backend):
+        """The detached sampler returns arrays of the active backend."""
+        if backend == "torch":
+            pytest.importorskip("torch")
+        be.set_backend(backend)
+        try:
+            bsdf = HarveyShackBSDF(b0=5.0, l0=3e-2, s=2.0)
+            n = 1000
+            dirs, weights, _ = bsdf.sample(
+                n,
+                be.array(np.tile([0.5, 0.0, np.sqrt(0.75)], (n, 1))),
+                be.array(np.tile([0.0, 0.0, -1.0], (n, 1))),
+                be.array(np.full(n, 0.55)),
+                NSQRng(2),
+                np.arange(n),
+                np.zeros(n, dtype=np.int32),
+            )
+            assert np.all(be.to_numpy(weights) == 1.0)
+            assert np.isfinite(be.to_numpy(dirs)).all()
+        finally:
+            be.set_backend("numpy")
 
 
 class TestScatterFraction:
