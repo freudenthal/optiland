@@ -244,6 +244,7 @@ def _lower_bsdf(bsdf: object | None) -> BsdfIR:
                 "l0": bsdf.l0,
                 "s": bsdf.s,
                 "transmissive_fraction": bsdf.transmissive_fraction,
+                "form": bsdf.form,
             },
         )
     if isinstance(bsdf, TabulatedBSDF):

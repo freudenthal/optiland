@@ -31,7 +31,7 @@ class BsdfIR:
     - ``"lambertian"``: ``{"reflectance_value": <float>,
       "transmissive_fraction": <float>}``
     - ``"harvey_shack"``: ``{"b0": <float>, "l0": <float>, "s": <float>,
-      "transmissive_fraction": <float>}``
+      "transmissive_fraction": <float>, "form": "abg" | "harvey"}``
     - ``"tabulated"``: ``{"path": <str>, "transmissive_fraction": <float>}``
 
     ``transmissive_fraction`` is the probability that a given scatter
