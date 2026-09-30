@@ -49,6 +49,15 @@ class HarveyShackBSDF(BaseBSDF):
     the reference direction, the lobe is ``b0 / 2`` at ``rho = l0``, and far
     from the reference direction it falls as ``rho**-s``.
 
+    With ``form="harvey"`` the lobe is the Harvey form instead::
+
+        BSDF(rho) = b0 * (1 + (rho / l0)**2)**(-s / 2)
+
+    the shift-invariant scatter function fitted to measured mirrors by Harvey
+    (who writes the slope ``S = -s``). It has the same plateau ``b0``, the same
+    shoulder ``l0`` and the same far roll-off ``rho**-s`` as the ABg form; the
+    two forms are equal only for ``s = 2``.
+
     Scattered directions exist only inside the unit disk ``|beta| < 1`` (the
     hemisphere of the reference ray). The lobe is therefore integrated and
     sampled over the part of the disk around ``beta0`` that a ray can reach.
@@ -67,7 +76,12 @@ class HarveyShackBSDF(BaseBSDF):
     """
 
     def __init__(
-        self, b0: float, l0: float, s: float, transmissive_fraction: float = 0.0
+        self,
+        b0: float,
+        l0: float,
+        s: float,
+        transmissive_fraction: float = 0.0,
+        form: str = "abg",
     ) -> None:
         """Initialize HarveyShackBSDF.
 
@@ -78,7 +92,15 @@ class HarveyShackBSDF(BaseBSDF):
             transmissive_fraction: Probability in [0, 1] that a scatter
                 event blurs the straight-through ray instead of the
                 specular reflection.
+            form: ``"abg"`` (default) or ``"harvey"``: the shape of the lobe
+                (see the class docstring).
+
+        Raises:
+            ValueError: If ``form`` is not ``"abg"`` or ``"harvey"``.
         """
+        if form not in ("abg", "harvey"):
+            raise ValueError(f"form must be 'abg' or 'harvey', got {form!r}")
+        self.form = form
         self.b0 = float(b0)
         self.l0 = float(l0)
         self.s = float(s)
@@ -124,9 +146,26 @@ class HarveyShackBSDF(BaseBSDF):
         """
         return self.b0 / (1.0 + (beta / self.l0) ** self.s)
 
+    def _harvey(self, beta: np.ndarray) -> np.ndarray:
+        """Evaluate the Harvey-form lobe at a direction-cosine offset.
+
+        Args:
+            beta: Magnitude of the direction-cosine offset from the reference
+                direction.
+
+        Returns:
+            BSDF value [sr^-1].
+        """
+        return self.b0 * (1.0 + (beta / self.l0) ** 2) ** (-0.5 * self.s)
+
     def _lobe(self, rho: np.ndarray) -> np.ndarray:
-        """The lobe used by the tables (the ABg form)."""
-        return self._abg(rho)
+        """The lobe of the chosen ``form``, used by the tables."""
+        return self._harvey(rho) if self.form == "harvey" else self._abg(rho)
+
+    def evaluate(self, rho: np.ndarray) -> np.ndarray:
+        """The BSDF [sr^-1] at direction-cosine offsets ``rho`` from the
+        reference direction, in the chosen ``form``."""
+        return self._lobe(np.asarray(rho, dtype=np.float64))
 
     def _build_tables(self) -> None:
         """Build the radial and azimuthal sampling tables and the integrated scatter.

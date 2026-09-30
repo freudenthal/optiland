@@ -406,6 +406,97 @@ class TestHarveyShackIntegratedScatter:
             be.set_backend("numpy")
 
 
+class TestHarveyForm:
+    """``form="harvey"``: BSDF = b0 * (1 + (rho / l0)**2)**(-s / 2).
+
+    Over the unit disk at normal incidence the integrated scatter has the
+    closed form 2 pi b0 l0**2 / (2 - s) * ((1 + 1 / l0**2)**(1 - s / 2) - 1)
+    for s != 2, and pi b0 l0**2 ln(1 + 1 / l0**2) for s = 2.
+    """
+
+    def setup_method(self):
+        be.set_backend("numpy")
+
+    @staticmethod
+    def _closed(b0, l0, s):
+        u = 1.0 + 1.0 / l0**2
+        if abs(s - 2.0) < 1e-12:
+            return np.pi * b0 * l0**2 * np.log(u)
+        return 2.0 * np.pi * b0 * l0**2 / (2.0 - s) * (u ** (1.0 - s / 2.0) - 1.0)
+
+    def test_integrated_scatter_matches_closed_form(self):
+        """Includes a polished-aluminium fit: b0 = 6.63 /sr, slope -1.78,
+        l0 = 0.00129 at 514.5 nm (a mirror far below the TIS clip)."""
+        for b0, l0, s in ((6.63, 0.00129, 1.78), (50.0, 1e-2, 1.5), (5.0, 3e-2, 2.5)):
+            bsdf = HarveyShackBSDF(b0=b0, l0=l0, s=s, form="harvey")
+            assert float(bsdf.integrated_scatter(0.0)) == pytest.approx(
+                self._closed(b0, l0, s), rel=1e-5
+            )
+
+    def test_forms_agree_only_at_s_equal_two(self):
+        rho = np.array([0.0, 3e-3, 1e-2, 3e-2, 0.3])
+        abg = HarveyShackBSDF(b0=50.0, l0=1e-2, s=2.0)
+        harvey = HarveyShackBSDF(b0=50.0, l0=1e-2, s=2.0, form="harvey")
+        assert np.allclose(harvey.evaluate(rho), abg.evaluate(rho), rtol=1e-12)
+        abg = HarveyShackBSDF(b0=50.0, l0=1e-2, s=1.5)
+        harvey = HarveyShackBSDF(b0=50.0, l0=1e-2, s=1.5, form="harvey")
+        assert harvey.evaluate(1e-2) != pytest.approx(abg.evaluate(1e-2), rel=1e-3)
+        # same plateau and same far slope
+        assert harvey.evaluate(0.0) == pytest.approx(abg.evaluate(0.0))
+        far = harvey.evaluate(np.array([0.5, 1.0]))
+        assert np.log(far[1] / far[0]) / np.log(2.0) == pytest.approx(-1.5, abs=1e-3)
+
+    def test_radial_distribution_matches_harvey(self):
+        """The sampled rho density follows BSDF(rho) * 2 pi rho on log bins."""
+        bsdf = HarveyShackBSDF(b0=6.63, l0=0.00129, s=1.78, form="harvey")
+        n = 400_000
+        dirs, weights, _ = bsdf.sample(
+            n,
+            np.tile([0.0, 0.0, 1.0], (n, 1)),
+            np.tile([0.0, 0.0, -1.0], (n, 1)),
+            np.full(n, 0.55),
+            NSQRng(9),
+            np.arange(n),
+            np.zeros(n, dtype=np.int32),
+        )
+        assert np.all(np.asarray(weights) == 1.0)
+        rho = np.hypot(np.asarray(dirs)[:, 0], np.asarray(dirs)[:, 1])
+        edges = np.geomspace(1e-5, 1.0, 26)
+        counts, _ = np.histogram(rho, bins=edges)
+        fine = np.geomspace(1e-5, 1.0, 26 * 200 + 1)
+        cum = np.concatenate(
+            [
+                [0.0],
+                np.cumsum(
+                    0.5
+                    * np.diff(fine)
+                    * (
+                        bsdf.evaluate(fine[1:]) * fine[1:]
+                        + bsdf.evaluate(fine[:-1]) * fine[:-1]
+                    )
+                ),
+            ]
+        )
+        expected = np.diff(np.interp(edges, fine, cum))
+        expected *= counts.sum() / expected.sum()
+        keep = expected > 400
+        z = (counts[keep] - expected[keep]) / np.sqrt(expected[keep])
+        assert np.mean(z**2) < 1.5
+
+    def test_unknown_form_is_refused(self):
+        with pytest.raises(ValueError, match="form"):
+            HarveyShackBSDF(b0=1.0, l0=1e-2, s=2.0, form="gaussian")
+
+    def test_scene_ir_carries_the_form(self):
+        from optiland.nonsequential.ir.lower import _lower_bsdf
+
+        ir = _lower_bsdf(HarveyShackBSDF(b0=6.63, l0=0.00129, s=1.78, form="harvey"))
+        assert ir.kind == "harvey_shack"
+        assert ir.params["form"] == "harvey"
+        default = _lower_bsdf(HarveyShackBSDF(b0=1.0, l0=1e-2, s=2.0))
+        assert default.params["form"] == "abg"
+
+
 class TestScatterFraction:
     """``SurfaceConfig.scatter_fraction`` mixes scatter with the specular path."""
 

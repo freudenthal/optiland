@@ -212,6 +212,7 @@ class TestLowerCorrectness:
             "l0": 0.01,
             "s": 2.0,
             "transmissive_fraction": 0.0,
+            "form": "abg",
         }
 
     def test_bare_surface_has_none_bsdf(self):
