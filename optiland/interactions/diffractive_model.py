@@ -63,6 +63,11 @@ class DiffractiveInteractionModel(RefractiveReflectiveModel):
     def interact_paraxial_rays(self, rays: ParaxialRays) -> ParaxialRays:
         """Interact with paraxial rays, causing diffraction.
 
+        This is the first-order form of the real-ray grating equation
+        n2 sin(theta2) = n1 sin(theta1) + m lambda / d in the y-z plane:
+        order m adds m lambda / d to the reduced angle n u. On reflection the
+        slope also changes sign, as for a mirror.
+
         Args:
             rays (ParaxialRays): The incoming paraxial rays.
 
@@ -75,18 +80,16 @@ class DiffractiveInteractionModel(RefractiveReflectiveModel):
         # grating order
         m = self.geometry.grating_order
 
+        n1 = self.material_pre.n(rays.w)
         if self.is_reflective:
             # reflect (derived from paraxial equations when n'=-n)
-            n = self.material_pre.n(rays.w)
-            rays.u = -rays.u - 2 * n * rays.y / self.geometry.radius
-            rays.u = rays.u + m * rays.w / d
+            rays.u = -rays.u - 2 * rays.y / self.geometry.radius - m * rays.w / (d * n1)
         else:
             # surface power
-            n1 = self.material_pre.n(rays.w)
             n2 = self.material_post.n(rays.w)
             power = (n2 - n1) / self.geometry.radius
 
             # refract
-            rays.u = (n1 / n2) * rays.u - rays.y * power / n2 - m * rays.w / (d * n2)
+            rays.u = (n1 / n2) * rays.u - rays.y * power / n2 + m * rays.w / (d * n2)
 
         return rays
