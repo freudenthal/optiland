@@ -14,7 +14,13 @@ from typing import TYPE_CHECKING
 import optiland.backend as be
 from optiland._suggest import options_hint
 from optiland.apodization import BaseApodization
-from optiland.geometries import StandardGeometry
+from optiland.geometries import (
+    Plane,
+    PlaneGrating,
+    StandardGeometry,
+    StandardGratingGeometry,
+)
+from optiland.geometries.base import BaseGeometry
 from optiland.materials import IdealMaterial
 
 if TYPE_CHECKING:
@@ -39,18 +45,53 @@ class OpticUpdater:
     def set_radius(self, value, surface_number):
         """Set the radius of curvature of a surface.
 
+        A geometry that defines ``set_radius`` takes the new value. The flat
+        geometries do not, and are handled as follows:
+
+        * an infinite radius on a ``Plane`` or a ``PlaneGrating`` changes
+          nothing (the surface is already flat);
+        * a finite radius on a ``Plane`` replaces it with a
+          ``StandardGeometry``, so that a flat surface can be optimized;
+        * a finite radius on a ``PlaneGrating`` replaces it with a
+          ``StandardGratingGeometry`` with the same grating order, period and
+          groove orientation.
+
         Args:
             value (float): The new radius of curvature.
             surface_number (int): The index of the surface to modify.
 
+        Raises:
+            ValueError: If the geometry cannot take a radius of curvature.
+
         """
         surface = self.optic.surfaces[surface_number]
-        try:
-            surface.geometry.set_radius(value)
-        except AttributeError:
-            # Plane geometry does not support set_radius; replace with StandardGeometry
-            cs = surface.geometry.cs
+        geometry = surface.geometry
+        if type(geometry).set_radius is not BaseGeometry.set_radius:
+            geometry.set_radius(value)
+            return
+
+        is_flat = type(geometry) in (Plane, PlaneGrating)
+        if is_flat and bool(be.isinf(be.array(value))):
+            return
+
+        cs = geometry.cs
+        if type(geometry) is Plane:
             surface.geometry = StandardGeometry(cs, radius=value, conic=0)
+        elif type(geometry) is PlaneGrating:
+            surface.geometry = StandardGratingGeometry(
+                cs,
+                radius=value,
+                grating_order=geometry.grating_order,
+                grating_period=geometry.grating_period,
+                groove_orientation_angle=geometry.groove_orientation_angle,
+                conic=0,
+            )
+        else:
+            raise ValueError(
+                f"Surface {surface_number}: geometry type "
+                f"'{type(geometry).__name__}' does not support a radius of "
+                "curvature."
+            )
 
     def set_conic(self, value, surface_number):
         """Set the conic constant of a surface.
