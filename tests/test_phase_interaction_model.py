@@ -104,11 +104,11 @@ def test_interact_paraxial_rays(mock_surface):
         y=be.array([1.0]), u=be.array([0.0]), z=be.array([0.0]), wavelength=w
     )
 
-    # Expected paraxial angle: u_out = u_in - y/f (for n2=1)
+    # Expected paraxial angle: u_out = u_in - y/f (for n2=1), as for the real
+    # ray: the phase gradient -k0 y / f adds to the tangential wave vector.
     # With n2 != 1, u_out = u_in/n2 - y/(n2*f)
-    # The sign convention was changed to match the diffractive model.
     n2 = mock_surface.material_post.n(w)
-    expected_u = 1.0 / (n2 * f)
+    expected_u = -1.0 / (n2 * f)
 
     interacted_rays = model.interact_paraxial_rays(rays)
 

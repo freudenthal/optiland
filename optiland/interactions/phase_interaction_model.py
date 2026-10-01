@@ -164,19 +164,16 @@ class PhaseInteractionModel(BaseInteractionModel):
         # Apply geometric + gradient deflection
         grad_deflection = paraxial_gradient / k0
 
+        # The phase gradient adds to the tangential wave vector, as in
+        # interact_real_rays: the reduced angle n u changes by d(phi)/dy / k0.
         if self.is_reflective:
-            n = n1
-            power = (
-                -2 * n / self.parent_surface.geometry.radius
-            )  # Will be zero for Plane
-            u_geom = rays.u - y * power / n
-            rays.u = u_geom + grad_deflection / n
+            # reflect: the slope changes sign, as for a mirror
+            u_geom = -rays.u - 2 * y / self.parent_surface.geometry.radius
+            rays.u = u_geom - grad_deflection / n1
         else:
-            # The sign of grad_deflection is flipped to match the convention
-            # in the legacy DiffractiveInteractionModel.
             power = (n2 - n1) / self.parent_surface.geometry.radius
             u_geom = (n1 / n2) * rays.u - y * power / n2
-            rays.u = u_geom - grad_deflection / n2
+            rays.u = u_geom + grad_deflection / n2
 
         return rays
 

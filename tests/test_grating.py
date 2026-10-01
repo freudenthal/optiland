@@ -240,16 +240,17 @@ def test_paraxial_flat_grating_transmission(
     lens.paraxial.trace(Hy=Hy, Py=Py, wavelength=wv)
     u = lens.surfaces.u[-1].item()
     y = lens.surfaces.y[-1].item()
-    assert_allclose([u, y], [0.1174, 3.522])
+    # order -1 adds m lambda / d = -0.1174, as for the real ray (M = -0.1174)
+    assert_allclose([u, y], [-0.1174, -3.522])
     Hy = 0.0
     Py = 1.0
     lens.paraxial.trace(Hy=Hy, Py=Py, wavelength=wv)
     u = lens.surfaces.u[-1].item()
     y = lens.surfaces.y[-1].item()
-    assert_allclose([u, y], [0.1174, 11.022])
+    assert_allclose([u, y], [-0.1174, 3.978])
     Hy = 0.8
     Py = 0.8
     lens.paraxial.trace(Hy=Hy, Py=Py, wavelength=wv)
     u = lens.surfaces.u[-1].item()
     y = lens.surfaces.y[-1].item()
-    assert_allclose([u, y], [0.25794083, 13.73822504])
+    assert_allclose([u, y], [0.02314083, 6.69422504])
