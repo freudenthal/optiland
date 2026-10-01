@@ -100,13 +100,7 @@ class ThinLensInteractionModel(BaseInteractionModel):
 
         # if there is a coating, modify ray properties
         if self.coating:
-            rays = self.coating.interact(
-                rays,
-                reflect=self.is_reflective,
-                nx=0,
-                ny=0,
-                nz=1,
-            )
+            rays = self._interact_coating(rays, nx=0, ny=0, nz=1)
         else:
             # update polarization matrices, if PolarizedRays
             rays.update()
