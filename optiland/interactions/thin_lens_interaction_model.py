@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING
 
 import optiland.backend as be
 from optiland.interactions.base import BaseInteractionModel
-from optiland.rays.polarized_rays import PolarizedRays
 
 if TYPE_CHECKING:
     # pragma: no cover
@@ -90,9 +89,19 @@ class ThinLensInteractionModel(BaseInteractionModel):
         else:
             N *= n2 / n1
 
-        # only normalize if required
-        if self.bsdf or self.coating or isinstance(rays, PolarizedRays):
-            rays.normalize()
+        # keep the incident direction: the coating and the polarization
+        # update use it with the exit direction, as in a real refraction
+        rays.normalize()
+        rays.L0 = be.copy(rays.L)
+        rays.M0 = be.copy(rays.M)
+        rays.N0 = be.copy(rays.N)
+
+        if self.is_reflective:
+            N = -N
+        rays.L = L
+        rays.M = M
+        rays.N = N
+        rays.normalize()
 
         # if there is a surface scatter model, modify ray properties
         if self.bsdf:
@@ -110,14 +119,6 @@ class ThinLensInteractionModel(BaseInteractionModel):
         else:
             # update polarization matrices, if PolarizedRays
             rays.update()
-
-        if self.is_reflective:
-            N = -N
-        rays.L = L
-        rays.M = M
-        rays.N = N
-
-        rays.normalize()
 
         return rays
 
