@@ -9,7 +9,7 @@ from optiland.geometries import Plane
 from optiland.interactions import ThinLensInteractionModel
 from optiland.materials import IdealMaterial
 from optiland.optic import Optic
-from optiland.rays import ParaxialRays, RealRays
+from optiland.rays import ParaxialRays, PolarizedRays, RealRays
 from optiland.surfaces import Surface
 
 from .utils import assert_allclose
@@ -316,3 +316,78 @@ class TestThinLensInteractionModel:
         data = surface.interaction_model.to_dict()
         data["material_pre"] = None
         assert surface.interaction_model.from_dict(data, None)
+
+
+def _paraxial_surface(focal_length, coating=None):
+    """A refracting paraxial surface in air at z = 0, as the first surface."""
+    interaction_model = ThinLensInteractionModel(
+        parent_surface=None,
+        focal_length=focal_length,
+        is_reflective=False,
+        coating=coating,
+    )
+    surf = Surface(
+        previous_surface=None,
+        geometry=Plane(CoordinateSystem()),
+        material_post=IdealMaterial(1.0, 0),
+        is_stop=True,
+        aperture=None,
+        interaction_model=interaction_model,
+        surface_type="paraxial",
+    )
+    interaction_model.parent_surface = surf
+    return surf
+
+
+class TestThinLensPolarization:
+    """Polarization ray tracing through a paraxial surface.
+
+    For a ray in the y-z plane the surface turns the direction about the x
+    axis from k_in = z to k_out = (0, M, N). Without a coating the
+    polarization ray tracing matrix is that rotation: P x = x, P y = (0, N, -M)
+    and P k_in = k_out.
+    """
+
+    @pytest.mark.parametrize("focal_length", [100.0, -100.0])
+    def test_prt_turns_with_the_ray(self, focal_length, set_test_backend):
+        surf = _paraxial_surface(focal_length)
+        y = be.array([-3.0, 0.0, 3.0])
+        n = 3
+        rays = PolarizedRays(
+            be.zeros(n),
+            y,
+            -be.ones(n),
+            be.zeros(n),
+            be.zeros(n),
+            be.ones(n),
+            be.ones(n),
+            be.full((n,), 0.6),
+        )
+        surf.trace(rays)
+
+        norm = be.sqrt(y**2 + focal_length**2)
+        M = -y / norm * be.copysign(be.ones(n), be.array(focal_length))
+        N = be.abs(be.array(focal_length)) / norm
+        assert_allclose(rays.M, M)
+        assert_allclose(rays.N, N)
+
+        p = rays.p
+        x_out = p[:, :, 0]
+        y_out = p[:, :, 1]
+        k_out = p[:, :, 2]
+        assert_allclose(x_out[:, 0], be.ones(n))
+        assert_allclose(x_out[:, 1:], be.zeros((n, 2)), atol=1e-12)
+        assert_allclose(y_out[:, 1], N)
+        assert_allclose(y_out[:, 2], -M)
+        assert_allclose(k_out[:, 1], M)
+        assert_allclose(k_out[:, 2], N)
+
+    def test_coating_sees_the_incident_direction(self, set_test_backend):
+        surf = _paraxial_surface(50.0, coating=SimpleCoating(0.5, 0.5))
+        y = be.array([4.0])
+        rays = RealRays(0.0, y, -1.0, 0.0, 0.0, 1.0, intensity=1.0, wavelength=0.6)
+        surf.trace(rays)
+        assert_allclose(rays.L0, be.zeros(1))
+        assert_allclose(rays.M0, be.zeros(1))
+        assert_allclose(rays.N0, be.ones(1))
+        assert_allclose(rays.i, be.array([0.5]))
