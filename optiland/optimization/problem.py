@@ -218,11 +218,22 @@ class OptimizationProblem:
         return be.sqrt(self.sum_squared())
 
     def update_optics(self):
-        """Update all optics considered in the optimization problem"""
-        unique_optics = set()
+        """Update all optics considered in the optimization problem.
+
+        The optics are those of the variables and those of the operands (the
+        ``optic`` entry of the operand input data). An optic that no variable
+        owns can still depend on a variable through a pickup, for example a
+        configuration of a ``MultiConfiguration``. Each optic is updated once,
+        the optics of the variables first, in the order they were added.
+        """
+        optics = {}
         for var in self.variables:
-            unique_optics.add(var.optic)
-        for optic in unique_optics:
+            optics.setdefault(id(var.optic), var.optic)
+        for op in self.operands:
+            optic = (op.input_data or {}).get("optic")
+            if optic is not None:
+                optics.setdefault(id(optic), optic)
+        for optic in optics.values():
             optic.updater.update()
 
     def operand_info(self):
