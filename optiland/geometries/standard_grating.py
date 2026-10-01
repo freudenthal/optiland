@@ -25,6 +25,13 @@ class StandardGratingGeometry(BaseGeometry):
     """Represents a standard geometry with a given coordinate system, radius, and
     conic.
 
+    The grooves are ruled: they are the intersections of the surface with
+    equally spaced parallel planes h . r = j d, where d is the grating period,
+    j an integer and h = (-sin(alpha), cos(alpha), 0) with alpha the groove
+    orientation angle. The grating vector at a point is the unit vector along
+    h - (h . n) n (n the surface normal), and the local period along the
+    surface is d / |h - (h . n) n|.
+
     Args:
         coordinate_system (CoordinateSystem): The coordinate system of the geometry.
         radius (float): The radius of curvature of the geometry.
