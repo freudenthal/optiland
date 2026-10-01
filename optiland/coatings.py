@@ -271,8 +271,15 @@ class BaseCoatingPolarized(BaseCoating, ABC):
     property to provide the Jones matrix model for the coating.
 
     Methods:
-        reflect(rays, nx, ny, nz): Reflects the rays off the coating.
-        transmit(rays, nx, ny, nz): Transmits the rays through the coating.
+        reflect(rays, nx, ny, nz, rotation): Reflects the rays off the coating.
+        transmit(rays, nx, ny, nz, rotation): Transmits the rays through the
+            coating.
+
+    The rays are in the local frame of the surface during the interaction.
+    ``rotation`` is the rotation R from the global frame to that local frame
+    (v_local = R v_global); a coating whose axis is given in global
+    coordinates uses R · axis. With ``rotation=None`` the axis is used as it
+    is given.
 
     """
 
@@ -282,12 +289,42 @@ class BaseCoatingPolarized(BaseCoating, ABC):
         """The Jones matrix model associated with the coating."""
         pass  # pragma: no cover
 
+    def interact(
+        self,
+        rays: RealRays,
+        reflect: bool = False,
+        nx: be.ndarray = None,
+        ny: be.ndarray = None,
+        nz: be.ndarray = None,
+        rotation: be.ndarray = None,
+    ) -> RealRays:
+        """Performs an interaction with the coating.
+
+        Args:
+            rays (RealRays): The rays incident on the coating.
+            reflect (bool, optional): Flag indicating whether to perform
+                reflection (True) or transmission (False). Defaults to False.
+            nx (be.ndarray, optional): The x-component of the surface normal vectors.
+            ny (be.ndarray, optional): The y-component of the surface normal vectors.
+            nz (be.ndarray, optional): The z-component of the surface normal vectors.
+            rotation (be.ndarray, optional): The rotation (3, 3) from the global
+                frame to the frame of the rays. Defaults to None (no rotation).
+
+        Returns:
+            rays (RealRays): The rays after the interaction.
+
+        """
+        if reflect:
+            return self.reflect(rays, nx, ny, nz, rotation=rotation)
+        return self.transmit(rays, nx, ny, nz, rotation=rotation)
+
     def reflect(
         self,
         rays: RealRays,
         nx: be.ndarray = None,
         ny: be.ndarray = None,
         nz: be.ndarray = None,
+        rotation: be.ndarray = None,
     ) -> RealRays:
         """Reflects the rays off the coating.
 
@@ -296,13 +333,17 @@ class BaseCoatingPolarized(BaseCoating, ABC):
             nx (be.ndarray, optional): The x-component of the surface normal vector.
             ny (be.ndarray, optional): The y-component of the surface normal vector.
             nz (be.ndarray, optional): The z-component of the surface normal vector.
+            rotation (be.ndarray, optional): The rotation (3, 3) from the global
+                frame to the frame of the rays. Defaults to None (no rotation).
 
         Returns:
             RealRays: The updated rays after reflection.
 
         """
         aoi = self._compute_aoi(rays, nx, ny, nz)
-        jones = self.jones.calculate_matrix(rays, reflect=True, aoi=aoi)
+        jones = self.jones.calculate_matrix(
+            rays, reflect=True, aoi=aoi, rotation=rotation
+        )
         rays.update(jones)
         return rays
 
@@ -312,6 +353,7 @@ class BaseCoatingPolarized(BaseCoating, ABC):
         nx: be.ndarray = None,
         ny: be.ndarray = None,
         nz: be.ndarray = None,
+        rotation: be.ndarray = None,
     ) -> RealRays:
         """Transmits the rays through the coating.
 
@@ -320,13 +362,17 @@ class BaseCoatingPolarized(BaseCoating, ABC):
             nx (be.ndarray, optional): The x-component of the surface normal vector.
             ny (be.ndarray, optional): The y-component of the surface normal vector.
             nz (be.ndarray, optional): The z-component of the surface normal vector.
+            rotation (be.ndarray, optional): The rotation (3, 3) from the global
+                frame to the frame of the rays. Defaults to None (no rotation).
 
         Returns:
             RealRays: The updated rays after transmission through a surface.
 
         """
         aoi = self._compute_aoi(rays, nx, ny, nz)
-        jones = self.jones.calculate_matrix(rays, reflect=False, aoi=aoi)
+        jones = self.jones.calculate_matrix(
+            rays, reflect=False, aoi=aoi, rotation=rotation
+        )
         rays.update(jones)
         return rays
 
@@ -506,6 +552,7 @@ class JonesThinFilm(BaseJones):
         rays: RealRays,
         reflect: bool = False,
         aoi: be.ndarray = None,
+        rotation: be.ndarray = None,
     ) -> be.ndarray:
         # wavelengths: rays.w is in microns in Optiland
         wl_um = be.atleast_1d(rays.w)

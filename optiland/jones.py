@@ -36,6 +36,7 @@ class BaseJones(ABC):
         rays: RealRays,
         reflect: bool = False,
         aoi: be.ndarray = None,
+        rotation: be.ndarray = None,
     ):
         """Calculate the Jones matrix for the given rays.
 
@@ -45,12 +46,32 @@ class BaseJones(ABC):
                 or not. Defaults to False.
             aoi (be.ndarray, optional): Array representing the angle of
                 incidence. Defaults to None.
+            rotation (be.ndarray, optional): The rotation R (3, 3) from the
+                global frame to the frame of the rays (v_local = R v_global).
+                An element with an axis in global coordinates uses R · axis.
+                Defaults to None (the axis is used as it is given).
 
         Returns:
             be.ndarray: The calculated Jones matrix.
 
         """
         return be.tile(be.eye(3), (be.size(rays.x), 1, 1))  # pragma: no cover
+
+    @staticmethod
+    def _axis_in_frame(axis: be.ndarray, rotation: be.ndarray | None) -> be.ndarray:
+        """Return a global axis in the frame of the rays.
+
+        Args:
+            axis (be.ndarray): The axis (3,) in global coordinates.
+            rotation (be.ndarray | None): The rotation (3, 3) from the global
+                frame to the frame of the rays, or None.
+
+        Returns:
+            be.ndarray: R · axis, or the axis itself if ``rotation`` is None.
+        """
+        if rotation is None:
+            return axis
+        return be.matmul(rotation, be.array(axis))
 
 
 class JonesFresnel(BaseJones):
@@ -73,6 +94,7 @@ class JonesFresnel(BaseJones):
         rays: RealRays,
         reflect: bool = False,
         aoi: be.ndarray = None,
+        rotation: be.ndarray = None,
     ):
         """Calculate the Jones matrix for the given rays.
 
@@ -82,6 +104,10 @@ class JonesFresnel(BaseJones):
                 or not. Defaults to False.
             aoi (be.ndarray, optional): Array representing the angle of
                 incidence. Defaults to None.
+            rotation (be.ndarray, optional): The rotation R (3, 3) from the
+                global frame to the frame of the rays (v_local = R v_global).
+                An element with an axis in global coordinates uses R · axis.
+                Defaults to None (the axis is used as it is given).
 
         Returns:
             be.ndarray: The calculated Jones matrix.
@@ -134,6 +160,7 @@ class JonesLinearPolarizer(BaseJones):
         rays: RealRays,
         reflect: bool = False,
         aoi: be.ndarray = None,
+        rotation: be.ndarray = None,
     ):
         """Calculate the Jones matrix for the given rays.
 
@@ -141,6 +168,8 @@ class JonesLinearPolarizer(BaseJones):
             rays (RealRays): Object representing the rays.
             reflect (bool, optional): Indicates whether the rays are reflected.
             aoi (be.ndarray, optional): Array representing the angle of incidence.
+            rotation (be.ndarray, optional): The rotation from the global frame
+                to the frame of the rays. Defaults to None.
 
         Returns:
             be.ndarray: The calculated Jones matrix.
@@ -153,7 +182,8 @@ class JonesLinearPolarizer(BaseJones):
         s, p0, p1, o_in, o_out = PolarizedRays.get_local_basis(k0, k1)
 
         # Broadcast axis to match rays
-        axis_b = be.broadcast_to(self.axis, k0.shape)
+        axis = self._axis_in_frame(self.axis, rotation)
+        axis_b = be.broadcast_to(axis, k0.shape)
 
         # Project transmission axis onto local incident and exit planes
         ts_in = be.sum(axis_b * s, axis=1)
@@ -233,6 +263,7 @@ class ConstantJones(BaseJones):
         rays: RealRays,
         reflect: bool = False,
         aoi: be.ndarray = None,
+        rotation: be.ndarray = None,
     ):
         """Calculate the Jones matrix for the given rays."""
         jones_matrix = be.to_complex(be.zeros((be.size(rays.x), 3, 3)))
@@ -265,7 +296,8 @@ class JonesLinearDiattenuator(BaseJones):
     Attributes:
         t_min (be.ndarray): Minimum amplitude transmission coefficient.
         t_max (be.ndarray): Maximum amplitude transmission coefficient.
-        axis (be.ndarray): A 3D vector representing the fast transmission axis.
+        axis (be.ndarray): A 3D vector representing the fast transmission axis,
+            in global coordinates.
 
     Note:
         The intensity transmission is given by the square of the amplitude
@@ -295,6 +327,7 @@ class JonesLinearDiattenuator(BaseJones):
         rays: RealRays,
         reflect: bool = False,
         aoi: be.ndarray = None,
+        rotation: be.ndarray = None,
     ):
         """Calculate the Jones matrix for the given rays."""
         from optiland.rays.polarized_rays import PolarizedRays  # noqa: PLC0415
@@ -303,7 +336,8 @@ class JonesLinearDiattenuator(BaseJones):
         k1 = be.stack([rays.L, rays.M, rays.N]).T
         s, p0, p1, o_in, o_out = PolarizedRays.get_local_basis(k0, k1)
 
-        axis_b = be.broadcast_to(self.axis, k0.shape)
+        axis = self._axis_in_frame(self.axis, rotation)
+        axis_b = be.broadcast_to(axis, k0.shape)
         ts_in = be.sum(axis_b * s, axis=1)
         tp_in = be.sum(axis_b * p0, axis=1)
         norm_in = be.sqrt(ts_in**2 + tp_in**2)
@@ -335,7 +369,8 @@ class JonesLinearRetarder(BaseJones):
         retardance (be.ndarray): Retardance of the retarder, or the absolute value
             of the phase difference between the two components of the electric
             field, in radians.
-        axis (be.ndarray): A 3D vector representing the fast transmission axis.
+        axis (be.ndarray): A 3D vector representing the fast transmission axis,
+            in global coordinates.
     """
 
     def __init__(self, retardance, axis=None, *, theta=None):
@@ -360,6 +395,7 @@ class JonesLinearRetarder(BaseJones):
         rays: RealRays,
         reflect: bool = False,
         aoi: be.ndarray = None,
+        rotation: be.ndarray = None,
     ):
         """Calculate the Jones matrix for the given rays."""
         from optiland.rays.polarized_rays import PolarizedRays  # noqa: PLC0415
@@ -370,7 +406,8 @@ class JonesLinearRetarder(BaseJones):
         k1 = be.stack([rays.L, rays.M, rays.N]).T
         s, p0, p1, o_in, o_out = PolarizedRays.get_local_basis(k0, k1)
 
-        axis_b = be.broadcast_to(self.axis, k0.shape)
+        axis = self._axis_in_frame(self.axis, rotation)
+        axis_b = be.broadcast_to(axis, k0.shape)
         ts_in = be.sum(axis_b * s, axis=1)
         tp_in = be.sum(axis_b * p0, axis=1)
         norm_in = be.sqrt(ts_in**2 + tp_in**2)
