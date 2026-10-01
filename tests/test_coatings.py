@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
 import optiland.backend as be
@@ -255,6 +256,54 @@ class TestRetarderCoating:
         coating_dict_2 = {"type": "RetarderCoating", "retardance": 1.57}
         coating2 = coatings.RetarderCoating.from_dict(coating_dict_2)
         assert coating2.axis == (1.0, 0.0, 0.0)
+
+
+class TestDiattenuatorCoating:
+    def test_to_and_from_dict(self, set_test_backend):
+        coating = coatings.DiattenuatorCoating(0.1, 0.9, axis=(0.0, 1.0, 0.0))
+        data = coating.to_dict()
+        assert data == {
+            "type": "DiattenuatorCoating",
+            "t_min": 0.1,
+            "t_max": 0.9,
+            "axis": [0.0, 1.0, 0.0],
+        }
+        coating2 = coatings.BaseCoating.from_dict(data)
+        assert isinstance(coating2, coatings.DiattenuatorCoating)
+        assert coating2.to_dict() == data
+        coating3 = coatings.DiattenuatorCoating.from_dict(
+            {"type": "DiattenuatorCoating", "t_min": 0.1, "t_max": 0.9}
+        )
+        assert coating3.axis == (1.0, 0.0, 0.0)
+
+    @pytest.mark.parametrize("theta", [0.0, 0.3, 0.25 * np.pi, 1.2])
+    def test_malus_law_of_a_partial_polarizer(self, theta, set_test_backend):
+        """x-polarized light through a sheet with principal transmittances
+        k1 = 0.8 along (cos theta, sin theta, 0) and k2 = 1E-4 across it
+        transmits k1 cos^2 theta + k2 sin^2 theta at normal incidence."""
+        k1, k2 = 0.8, 1e-4
+        coating = coatings.DiattenuatorCoating(
+            np.sqrt(k2), np.sqrt(k1), axis=(np.cos(theta), np.sin(theta), 0.0)
+        )
+        n = 2
+        r = rays.PolarizedRays(
+            be.zeros(n),
+            be.zeros(n),
+            be.zeros(n),
+            be.zeros(n),
+            be.zeros(n),
+            be.ones(n),
+            be.ones(n),
+            be.full((n,), 0.55),
+        )
+        r.L0 = be.copy(r.L)
+        r.M0 = be.copy(r.M)
+        r.N0 = be.copy(r.N)
+        coating.transmit(r, be.zeros(n), be.zeros(n), be.ones(n))
+        e_out = r.p[:, :, 0]
+        power = be.sum(be.real(e_out * be.conj(e_out)), axis=1)
+        expected = k1 * np.cos(theta) ** 2 + k2 * np.sin(theta) ** 2
+        assert_allclose(power, be.full((n,), expected))
 
 
 class TestThinFilmCoatings:
