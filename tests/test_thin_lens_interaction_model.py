@@ -391,3 +391,47 @@ class TestThinLensPolarization:
         assert_allclose(rays.M0, be.zeros(1))
         assert_allclose(rays.N0, be.ones(1))
         assert_allclose(rays.i, be.array([0.5]))
+
+
+class TestThinLensReverseTravel:
+    """A refracting paraxial surface traversed along -z (after a mirror)."""
+
+    @pytest.mark.parametrize("focal_length", [50.0, -50.0])
+    def test_parallel_ray_along_minus_z(self, focal_length, set_test_backend):
+        surf = _paraxial_surface(focal_length)
+        y = be.array([3.0, -2.0])
+        n = 2
+        rays = RealRays(
+            be.zeros(n),
+            y,
+            be.ones(n),
+            be.zeros(n),
+            be.zeros(n),
+            -be.ones(n),
+            be.ones(n),
+            be.full((n,), 0.6),
+        )
+        surf.trace(rays)
+        # it keeps travelling along -z and crosses the axis at z = -f
+        norm = be.sqrt(y**2 + focal_length**2)
+        assert_allclose(rays.N, -be.abs(be.array(focal_length)) / norm)
+        assert_allclose(
+            rays.M, -y / norm * be.copysign(be.ones(n), be.array(focal_length))
+        )
+
+    def test_reverse_equals_mirrored_forward(self, set_test_backend):
+        """A ray along -z with slope t at height h leaves with the slope of the
+        forward ray mirrored in z: t' = t - h / f per unit of travel."""
+        f = 40.0
+        y = be.array([2.5])
+        t = 0.03
+        fwd = RealRays(0.0, y, -1.0, 0.0, t, 1.0, intensity=1.0, wavelength=0.6)
+        fwd.normalize()
+        rev = RealRays(0.0, y, 1.0, 0.0, t, -1.0, intensity=1.0, wavelength=0.6)
+        rev.normalize()
+        _paraxial_surface(f).trace(fwd)
+        _paraxial_surface(f).trace(rev)
+        assert_allclose(rev.M / be.abs(rev.N), fwd.M / fwd.N)
+        assert_allclose(rev.N, -fwd.N)
+        # the ray reaches the lens 1 mm after its start, at the height 2.5 + t
+        assert_allclose(fwd.M / fwd.N, be.array([t - (2.5 + t) / f]))

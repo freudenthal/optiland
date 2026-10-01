@@ -74,13 +74,18 @@ class ThinLensInteractionModel(BaseInteractionModel):
         if not be.isinf(self.f):
             if self.is_reflective:
                 f1 = f2 = -self.f * be.copysign(be.ones_like(rays.N), rays.N)
+                L = L * f1 - rays.x
+                M = M * f1 - rays.y
+                N = be.where(rays.N > 0, f2, -f2)
             else:
-                f = self.f * be.copysign(be.ones_like(rays.N), rays.N)
-                f1 = f * n1
-                f2 = f * n2
-            L = L * f1 - rays.x
-            M = M * f1 - rays.y
-            N = be.where(rays.N > 0, f2, -f2)
+                # The transverse slope per unit of travel changes by -h / f
+                # whatever the direction of travel, and the ray keeps the
+                # sign of N (a ray along -z, after a mirror, also refracts).
+                f1 = self.f * n1
+                f2 = self.f * n2 * be.copysign(be.ones_like(rays.N), rays.N)
+                L = L * f1 - rays.x
+                M = M * f1 - rays.y
+                N = f2
             if self.f < 0:
                 L = -L
                 M = -M
