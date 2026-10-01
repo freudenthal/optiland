@@ -14,6 +14,7 @@ import optiland.backend as be
 from optiland.jones import (
     BaseJones,
     JonesFresnel,
+    JonesLinearDiattenuator,
     JonesLinearPolarizer,
     JonesLinearRetarder,
 )
@@ -491,6 +492,56 @@ class RetarderCoating(BaseCoatingPolarized):
         """Creates a coating from a dictionary."""
         return cls(
             retardance=data["retardance"], axis=data.get("axis", (1.0, 0.0, 0.0))
+        )
+
+
+class DiattenuatorCoating(BaseCoatingPolarized):
+    """Represents a linear diattenuator coating (a partial polarizer).
+
+    The intensity transmittance is ``t_max**2`` for light polarized along the
+    transmission axis and ``t_min**2`` for light polarized across it. A sheet
+    polarizer with principal transmittances k1 and k2 has ``t_max = sqrt(k1)``
+    and ``t_min = sqrt(k2)``; its diattenuation is ``(k1 - k2) / (k1 + k2)``.
+
+    Args:
+        t_min (float): Amplitude transmission across the axis.
+        t_max (float): Amplitude transmission along the axis.
+        axis (tuple | list | be.ndarray): A 3D vector representing the
+            transmission axis in global coordinates. Defaults to [1.0, 0.0, 0.0]
+            (horizontal).
+    """
+
+    def __init__(
+        self,
+        t_min: float,
+        t_max: float,
+        axis: tuple[float, float, float] | list[float] | be.ndarray = (1.0, 0.0, 0.0),
+    ):
+        self.t_min = t_min
+        self.t_max = t_max
+        self.axis = axis
+        self._jones = JonesLinearDiattenuator(t_min, t_max, axis)
+
+    @property
+    def jones(self) -> JonesLinearDiattenuator:
+        return self._jones
+
+    def to_dict(self) -> dict[str, Any]:
+        """Converts the coating to a dictionary."""
+        return {
+            "type": self.__class__.__name__,
+            "t_min": self.t_min,
+            "t_max": self.t_max,
+            "axis": list(self.axis) if not isinstance(self.axis, list) else self.axis,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> DiattenuatorCoating:
+        """Creates a coating from a dictionary."""
+        return cls(
+            t_min=data["t_min"],
+            t_max=data["t_max"],
+            axis=data.get("axis", (1.0, 0.0, 0.0)),
         )
 
 
