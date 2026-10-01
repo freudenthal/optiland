@@ -76,8 +76,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-import numpy as np
-
 import optiland.backend as be
 from optiland.anisotropic.eigenmodes import plane_wave_modes
 from optiland.anisotropic.frames import rotate_constitutive, to_global
@@ -87,11 +85,11 @@ from optiland.materials import IdealMaterial
 from optiland.materials.anisotropic import BaseTensorMaterial, UniaxialMaterial
 from optiland.rays.anisotropic_rays import AnisotropicRays
 from optiland.rays.polarized_rays import PolarizedRays
-from optiland.rays.real_rays import RealRays
 
 if TYPE_CHECKING:
     from optiland.coatings import BaseCoating
     from optiland.rays import ParaxialRays
+    from optiland.rays.real_rays import RealRays
     from optiland.scatter import BaseBSDF
     from optiland.surfaces import Surface
 
@@ -327,27 +325,6 @@ class AnisotropicInteractionModel(BaseInteractionModel):  # type: ignore[no-unty
         d1 = be.abs(_dot(k1, k1) - eps_o)
         d2 = be.abs(_dot(k2, k2) - eps_o)
         return d2 < d1 if mode == "o" else d2 > d1
-
-    def _local_rotation(self) -> Array:
-        """Return the rotation R from the global to the surface frame, (3, 3).
-
-        v_local = R v_global. The columns of R are the global axes as the
-        coordinate system of the surface localizes them.
-        """
-        eye = np.eye(3)
-        zero = be.zeros((3,))
-        probe = RealRays(
-            zero,
-            zero,
-            zero,
-            be.array(eye[0]),
-            be.array(eye[1]),
-            be.array(eye[2]),
-            be.ones((3,)),
-            be.ones((3,)),
-        )
-        self.geometry.localize(probe)
-        return be.stack([probe.L, probe.M, probe.N], axis=0)
 
     @staticmethod
     def _incident(
