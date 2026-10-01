@@ -10,6 +10,10 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
+import numpy as np
+
+import optiland.backend as be
+
 if TYPE_CHECKING:
     # pragma: no cover
     from optiland.coatings import BaseCoating
@@ -120,13 +124,58 @@ class BaseInteractionModel(ABC):
             rays = self.bsdf.scatter(rays, nx, ny, nz)
 
         if self.coating:
-            rays = self.coating.interact(
+            rays = self._interact_coating(rays, nx, ny, nz)
+        else:
+            rays.update()
+        return rays
+
+    def _interact_coating(
+        self, rays: RealRays, nx: float, ny: float, nz: float
+    ) -> RealRays:
+        """Apply the coating to the rays.
+
+        The rays are in the local frame of the surface. A polarized coating
+        also gets the rotation from the global frame to that local frame, so
+        that an axis given in global coordinates is used as a global axis.
+        """
+        from optiland.coatings import BaseCoatingPolarized
+
+        if isinstance(self.coating, BaseCoatingPolarized):
+            return self.coating.interact(
                 rays,
                 reflect=self.is_reflective,
                 nx=nx,
                 ny=ny,
                 nz=nz,
+                rotation=self._local_rotation(),
             )
-        else:
-            rays.update()
-        return rays
+        return self.coating.interact(
+            rays,
+            reflect=self.is_reflective,
+            nx=nx,
+            ny=ny,
+            nz=nz,
+        )
+
+    def _local_rotation(self) -> be.ndarray:
+        """Return the rotation R from the global to the surface frame, (3, 3).
+
+        v_local = R v_global. The columns of R are the global axes as the
+        coordinate system of the surface localizes them.
+        """
+        from optiland.rays import RealRays
+
+        eye = np.eye(3)
+        zero = be.zeros((3,))
+        probe = RealRays(
+            zero,
+            zero,
+            zero,
+            be.array(eye[0]),
+            be.array(eye[1]),
+            be.array(eye[2]),
+            be.ones((3,)),
+            be.ones((3,)),
+        )
+        self.geometry.localize(probe)
+        return be.stack([probe.L, probe.M, probe.N], axis=0)
