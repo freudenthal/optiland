@@ -44,11 +44,8 @@ class DiffractiveInteractionModel(RefractiveReflectiveModel):
         # find grating vector
         fx, fy, fz = self.geometry.grating_vector(rays)
 
-        # grating period
-        pp = self.geometry.grating_period
-
-        # correct grating period considering projection effect on the surface
-        pp = pp / be.sqrt(fx**2 + fy**2)
+        # local grating period along the surface
+        pp = self.geometry.grating_period / self._period_factor(fx, fy)
 
         # grating order
         m = self.geometry.grating_order
@@ -59,6 +56,27 @@ class DiffractiveInteractionModel(RefractiveReflectiveModel):
         rays = self._apply_coating_and_bsdf(rays, nx, ny, nz)
 
         return rays
+
+    def _period_factor(self, fx, fy):
+        """Return the ratio of the grating period to the local period.
+
+        The grooves are the intersections of the surface with the planes
+        h . r = j d (j an integer, d the grating period), where
+        h = (-sin(alpha), cos(alpha), 0) and alpha is the groove orientation
+        angle. Along the surface the phase 2 pi (h . r) / d has the gradient
+        (2 pi / d) (h - (h . n) n), so the local period is d / |h - (h . n) n|.
+        The unit grating vector f lies along h - (h . n) n, so
+        |h - (h . n) n| = h . f. On a plane this is 1.
+
+        Args:
+            fx (be.ndarray): The x-component of the unit grating vector.
+            fy (be.ndarray): The y-component of the unit grating vector.
+
+        Returns:
+            be.ndarray: The factor |h - (h . n) n|.
+        """
+        alpha = self.geometry.groove_orientation_angle
+        return be.abs(-be.sin(alpha) * fx + be.cos(alpha) * fy)
 
     def interact_paraxial_rays(self, rays: ParaxialRays) -> ParaxialRays:
         """Interact with paraxial rays, causing diffraction.
